@@ -3,7 +3,7 @@ import json
 import numpy as np
 from PIL import Image
 
-from mcdrone import action_array, iter_transitions, list_episodes
+from quadcraft import action_array, iter_transitions, list_episodes
 
 
 def write_episode(root, name, steps=3, width=8, height=6):

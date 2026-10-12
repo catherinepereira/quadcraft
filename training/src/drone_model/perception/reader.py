@@ -54,7 +54,7 @@ CLASSES = (
     "minecraft:beetroots",
     "minecraft:glowstone",
     "minecraft:dripstone_block",
-    "mcdrone:marker",
+    "quadcraft:marker",
     *MOB_KINDS,
 )
 INDEX = {name: i for i, name in enumerate(CLASSES)}

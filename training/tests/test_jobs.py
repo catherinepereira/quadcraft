@@ -1,6 +1,6 @@
 from drone_model.scripted.jobs import BuildPlanner, base_name, box_views
 
-MASK_IDS = {"blocks": ["minecraft:stone", "minecraft:bricks"], "entities": ["mcdrone:drone", "minecraft:zombie", "minecraft:cow"], "categories": ["misc", "monster", "creature"], "entityBase": 32768}
+MASK_IDS = {"blocks": ["minecraft:stone", "minecraft:bricks"], "entities": ["quadcraft:drone", "minecraft:zombie", "minecraft:cow"], "categories": ["misc", "monster", "creature"], "entityBase": 32768}
 JOB = {"kind": "copy", "source": [0, 1, 0, 2, 3, 2], "dest": [10, 1, 0, 12, 3, 2], "size": [3, 3, 3]}
 
 
@@ -63,7 +63,7 @@ def test_trenches_open_a_face_of_every_block():
 
 
 def test_scans_fill_memory_and_dig_shafts_to_buried_blocks(tmp_path):
-    from mcdrone.schematic import Schematic
+    from quadcraft.schematic import Schematic
 
     from drone_model.scripted.jobs import MinePlanner
 
@@ -82,7 +82,7 @@ def test_scans_fill_memory_and_dig_shafts_to_buried_blocks(tmp_path):
 
 
 def test_scanned_fields_give_ripe_crops_by_age_and_bare_plots(tmp_path):
-    from mcdrone.schematic import Schematic
+    from quadcraft.schematic import Schematic
 
     from drone_model.scripted.jobs import HarvestPlanner, block_age
 
@@ -106,7 +106,7 @@ def test_scanned_fields_give_ripe_crops_by_age_and_bare_plots(tmp_path):
 
 
 def test_a_pocket_under_stone_gets_a_shaft_not_a_dig_through_it(tmp_path):
-    from mcdrone.schematic import Schematic
+    from quadcraft.schematic import Schematic
 
     from drone_model.scripted.jobs import MinePlanner
 
@@ -154,7 +154,7 @@ def test_body_clear_needs_room_for_the_whole_drone(tmp_path):
 
 
 def test_a_shaft_through_a_block_the_tier_cant_harvest_is_given_up(tmp_path):
-    from mcdrone.schematic import Schematic
+    from quadcraft.schematic import Schematic
 
     from drone_model.scripted.jobs import MinePlanner
 
@@ -178,7 +178,7 @@ def test_a_shaft_through_a_block_the_tier_cant_harvest_is_given_up(tmp_path):
 
 
 def test_trenches_go_around_blocks_the_tier_cant_harvest(tmp_path):
-    from mcdrone.schematic import Schematic
+    from quadcraft.schematic import Schematic
 
     from drone_model.scripted.jobs import MinePlanner
 

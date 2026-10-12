@@ -23,7 +23,7 @@ def read_scans(job: dict, schematics: Path | None) -> dict[str, dict[tuple[int, 
     """Block states of each box the server scanned for the job, by box name and then by cell"""
     if not job.get("scan"):
         return {}
-    from mcdrone.schematic import load
+    from quadcraft.schematic import load
 
     if schematics is None:
         raise ValueError("a scanned job needs the schematics folder, pass --schematics")

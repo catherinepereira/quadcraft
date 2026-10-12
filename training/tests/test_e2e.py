@@ -1,7 +1,7 @@
 """
 Runs against a live game.
 Start the mod with `gradlew runClientGameTest -Pe2eHold=600` (or a world open in runClient), then
-MCDRONE_E2E=1 pytest tests/test_e2e.py
+QUADCRAFT_E2E=1 pytest tests/test_e2e.py
 """
 
 import json
@@ -16,9 +16,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mcdrone import BridgeError, DroneClient, DroneEnv, action, decode_obs
+from quadcraft import BridgeError, DroneClient, DroneEnv, action, decode_obs
 
-pytestmark = pytest.mark.skipif(os.environ.get("MCDRONE_E2E") != "1", reason="needs a running game, set MCDRONE_E2E=1")
+pytestmark = pytest.mark.skipif(os.environ.get("QUADCRAFT_E2E") != "1", reason="needs a running game, set QUADCRAFT_E2E=1")
 
 BASE = "http://127.0.0.1:8318"
 
@@ -44,7 +44,7 @@ def steer(state_vec):
 @pytest.fixture(scope="module", autouse=True)
 def signal_done():
     yield
-    done = os.environ.get("MCDRONE_E2E_DONE")
+    done = os.environ.get("QUADCRAFT_E2E_DONE")
     if done:
         Path(done).write_text("done")
 
@@ -68,7 +68,7 @@ def test_env_reaches_marker_and_records():
         time.sleep(1.0)
         detail = json.loads(http("GET", f"/api/episodes/navigate_to/{episode_id}"))
         assert detail["meta"]["outcome"] == "success"
-        assert detail["meta"]["client"] == "mcdrone-env"
+        assert detail["meta"]["client"] == "quadcraft-env"
         assert len(detail["steps"]) == steps + 1
         frame = decode_obs(http("GET", f"/api/episodes/navigate_to/{episode_id}/frame/0"))
         assert frame.rgb.shape == (120, 160, 3)

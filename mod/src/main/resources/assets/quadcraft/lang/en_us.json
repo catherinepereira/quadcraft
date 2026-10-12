@@ -1,0 +1,18 @@
+{
+    "block.quadcraft.marker": "Drone Marker",
+    "entity.quadcraft.drone": "Drone",
+    "key.category.quadcraft.main": "Quadcraft",
+    "key.quadcraft.pilot": "Pilot drone",
+    "key.quadcraft.new_episode": "New training episode",
+    "key.quadcraft.record": "Toggle recording",
+    "key.quadcraft.inventory": "Drone inventory and container",
+    "key.quadcraft.hud": "Toggle drone HUD",
+    "key.quadcraft.copy": "Start copy job",
+    "key.quadcraft.jobs": "Drone jobs",
+    "item.quadcraft.copper_drone": "Copper Drone",
+    "item.quadcraft.iron_drone": "Iron Drone",
+    "item.quadcraft.diamond_drone": "Diamond Drone",
+    "item.quadcraft.netherite_drone": "Netherite Drone",
+    "item.quadcraft.tablet": "Drone Tablet",
+    "block.quadcraft.charging_station": "Drone Charging Station"
+}

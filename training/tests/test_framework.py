@@ -9,7 +9,7 @@ from drone_model.framework.data import pad_episodes
 from drone_model.framework.registry import POLICIES
 from drone_model.framework.spec import Step
 
-MASK_IDS = {"blocks": ["minecraft:stone"], "entities": ["mcdrone:drone"], "categories": ["misc"], "entityBase": 32768}
+MASK_IDS = {"blocks": ["minecraft:stone"], "entities": ["quadcraft:drone"], "categories": ["misc"], "entityBase": 32768}
 
 
 def step() -> Step:

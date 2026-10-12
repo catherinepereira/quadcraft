@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-from mcdrone import DroneEnv
+from quadcraft import DroneEnv
 from PIL import Image, ImageDraw, ImageFont
 
 from ..framework.evaluate import Runner, outcome

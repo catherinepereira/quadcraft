@@ -41,7 +41,7 @@ export function MapView() {
     const timer = setInterval(
       () =>
         frame.current?.contentWindow?.postMessage(
-          { type: "mcdrone-follow", pos: target.current },
+          { type: "quadcraft-follow", pos: target.current },
           window.location.origin,
         ),
       1000,

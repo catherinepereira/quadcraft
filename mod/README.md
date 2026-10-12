@@ -15,9 +15,9 @@ $env:JAVA_HOME = "$env:USERPROFILE\.jdks\jdk-25.0.4.1+1"   # wherever JDK 25 liv
 .\gradlew.bat runClient      # dev client with the mod loaded
 ```
 
-`runClient` writes recordings to `../training/data`, where training reads them, and logs to `run/logs`, which keeps the last `logRetentionDays` of session logs (7 by default, 0 keeps them all). Recordings never go in the log folder and are never pruned. A normal install writes both under `.minecraft/mcdrone/`. Test recordings, the client gametest's own and any a bridge client asks for with `test`, go to `mcdrone/test-recordings` in the game folder.
+`runClient` writes recordings to `../training/data`, where training reads them, and logs to `run/logs`, which keeps the last `logRetentionDays` of session logs (7 by default, 0 keeps them all). Recordings never go in the log folder and are never pruned. A normal install writes both under `.minecraft/quadcraft/`. Test recordings, the client gametest's own and any a bridge client asks for with `test`, go to `quadcraft/test-recordings` in the game folder.
 
-To use the mod in the regular launcher, install Fabric for 26.3 with the Fabric installer, then put `build/libs/mcdrone-0.1.0.jar` and the Fabric API jar in `.minecraft/mods`.
+To use the mod in the regular launcher, install Fabric for 26.3 with the Fabric installer, then put `build/libs/quadcraft-0.1.0.jar` and the Fabric API jar in `.minecraft/mods`.
 
 ## In game
 
@@ -46,7 +46,11 @@ Hold the tablet to select. Left click a block for the first corner, right click 
 | Build a schematic | Paste at, Materials, and a file from the game's `schematics` folder |
 | Mine blocks in a region | Mine in, and the blocks, such as `coal_ore, iron_ore` |
 | Harvest and replant crops | Farm, and the crop |
-| Return home | none, the drone flies back to its charging station |
+| Patrol a region | Patrol, and the rounds |
+| Guard a region from mobs | Guard, the rounds, and the mobs to kill, hostile ones when blank |
+| Fly to the paste point | Paste at |
+| Find a block in a region | Search, and the block, such as `bricks` |
+| Follow me | none, the drone keeps 2 to 5 blocks from you until stopped |
 
 Each region is the tablet selection or a saved region. Paste at is the tablet's paste point or a saved region, whose lowest corner the build's lowest corner lands on. Materials is what the drone carries, or a saved region it mines the blocks it needs from before building. That makes a three-region job: mine region A for materials, copy region B, build in region C. The drone never breaks blocks in the copy's source, and the gather region can't overlap the source or the destination.
 
@@ -79,11 +83,11 @@ Right click a charging station with the tablet to make it the active drone's hom
 
 The battery counts drone ticks: each pose the flying client sends is one tick, and an idle drone runs on server ticks. That keeps it running in lockstep, where server ticks are frozen. A training arena recharges the drone and keeps it from running down, so long training runs don't depend on the charge.
 
-The settings are in `config/mcdrone-battery.json`, written with the defaults on the first start: `enabled` (false turns the battery off, drones never run down), `flightMinutes`, `hoverShare`, `breakSeconds`, `chargeMinutes`, and `reserve`, the share of a charge the brain keeps for the flight home. The drone's state carries its charge, home, and these settings under `battery`.
+The settings are in `config/quadcraft-battery.json`, written with the defaults on the first start: `enabled` (false turns the battery off, drones never run down), `flightMinutes`, `hoverShare`, `breakSeconds`, `chargeMinutes`, and `reserve`, the share of a charge the brain keeps for the flight home. The drone's state carries its charge, home, and these settings under `battery`.
 
 ## Web map
 
-With [BlueMap](https://modrinth.com/mod/bluemap) installed next to the mod, its web map at `http://localhost:8100` shows the saved regions as colored boxes, each drone with its tier's icon, charge, and queue, and the charging stations. Drone markers move every second, as often as BlueMap moves players: the mod writes the drones' positions to `mcdrone/drones.json` in BlueMap's web root, and a small script it adds to the web app moves the markers from it. The same script glides the camera after the drone the dashboard follows. Blocks that drones and arenas change are saved and rendered again every 5 seconds, BlueMap renders from the region files. Toggle the markers from the map's menu. The dashboard's Map tab embeds it. The dev client loads BlueMap 5.28. BlueMap waits for `accept-download: true` in `config/bluemap/core.conf`, which accepts Mojang's EULA and lets it download the Minecraft client jar it renders with. The client gametest's run folder is cleared on every launch, so its BlueMap settings come from `devconfig/bluemap/`: `core.conf` with the download on, and `webserver.conf`, which binds the map to `127.0.0.1`. For `runClient`, set it in `run/config/bluemap/core.conf` after the first start, then `/bluemap reload`. Without BlueMap the mod runs the same, minus the map.
+With [BlueMap](https://modrinth.com/mod/bluemap) installed next to the mod, its web map at `http://localhost:8100` shows the saved regions as colored boxes, each drone with its tier's icon, charge, and queue, and the charging stations. Drone markers move every second, as often as BlueMap moves players: the mod writes the drones' positions to `quadcraft/drones.json` in BlueMap's web root, and a small script it adds to the web app moves the markers from it. The same script glides the camera after the drone the dashboard follows. Blocks that drones and arenas change are saved and rendered again every 5 seconds, BlueMap renders from the region files. Toggle the markers from the map's menu. The dashboard's Map tab embeds it. The dev client loads BlueMap 5.28. BlueMap waits for `accept-download: true` in `config/bluemap/core.conf`, which accepts Mojang's EULA and lets it download the Minecraft client jar it renders with. The client gametest's run folder is cleared on every launch, so its BlueMap settings come from `devconfig/bluemap/`: `core.conf` with the download on, and `webserver.conf`, which binds the map to `127.0.0.1`. For `runClient`, set it in `run/config/bluemap/core.conf` after the first start, then `/bluemap reload`. Without BlueMap the mod runs the same, minus the map.
 
 ## Crafting
 
@@ -154,7 +158,7 @@ Depth and mask come from raycasts, so they don't depend on the graphics backend.
 
 ## Config
 
-`config/mcdrone.json` holds frame size, streams and the chase view's size, stream rate, flight limits, the default task and terrain, arena settings, the collision and out-of-bounds penalties, the geofence padding, block perception (`vision` or `scan`), materials, the pause after tool actions, log level, and how many days of session logs to keep. The dashboard's Config tab edits it live.
+`config/quadcraft.json` holds frame size, streams and the chase view's size, stream rate, flight limits, the default task and terrain, arena settings, the collision and out-of-bounds penalties, the geofence padding, block perception (`vision` or `scan`), materials, the pause after tool actions, log level, and how many days of session logs to keep. The dashboard's Config tab edits it live.
 
 ## Tests
 

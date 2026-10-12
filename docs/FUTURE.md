@@ -47,4 +47,4 @@ Postponed. Learning to steer around other drones is the goal, scripted traffic r
 ## Map
 
 - BlueMap re-renders the changed regions every 5 seconds after saving the chunks, so arena changes show up on the map within about 5 seconds.
-- Drone markers move every second from `mcdrone/drones.json` in BlueMap's web root. BlueMap's own marker push still comes every 10 seconds and carries the names and details.
+- Drone markers move every second from `quadcraft/drones.json` in BlueMap's web root. BlueMap's own marker push still comes every 10 seconds and carries the names and details.

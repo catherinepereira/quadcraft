@@ -21,7 +21,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from mcdrone import DroneClient, DroneEnv
+from quadcraft import DroneClient, DroneEnv
 
 from .energy import BatteryKeeper, EnergyModel
 from .paths import CHECKPOINTS, REPORTS, SCHEMATICS

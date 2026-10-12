@@ -8,18 +8,18 @@ while ((Get-Date) -lt $deadline -and (Get-CimInstance Win32_Process -Filter "Nam
 Start-Sleep 3
 $env:JAVA_HOME = "$env:USERPROFILE\.jdks\jdk-25.0.4.1+1"
 $started = Get-Date
-Start-Process -FilePath "$root\mod\gradlew.bat" -ArgumentList "-p", "$root\mod", "runClientGameTest", "-Pe2eHold=86400", "--console=plain" -RedirectStandardOutput "$env:TEMP\mcd-gametest.log" -RedirectStandardError "$env:TEMP\mcd-gametest.err" -WindowStyle Hidden
+Start-Process -FilePath "$root\mod\gradlew.bat" -ArgumentList "-p", "$root\mod", "runClientGameTest", "-Pe2eHold=86400", "--console=plain" -RedirectStandardOutput "$env:TEMP\quadcraft-gametest.log" -RedirectStandardError "$env:TEMP\quadcraft-gametest.err" -WindowStyle Hidden
 $result = "timed out"
 $deadline = (Get-Date).AddMinutes(12)
 while ((Get-Date) -lt $deadline) {
   Start-Sleep 5
-  $log = Get-Content "$env:TEMP\mcd-gametest.log" -Raw -ErrorAction SilentlyContinue
+  $log = Get-Content "$env:TEMP\quadcraft-gametest.log" -Raw -ErrorAction SilentlyContinue
   if ($log -match "AssertionError|BUILD FAILED|gametests failed") { $result = "FAILED"; break }
   $mod = Get-ChildItem "$root\mod\run\logs\mod-*.jsonl" | Sort-Object LastWriteTime | Select-Object -Last 1
   if ($mod.CreationTime -gt $started -and (Select-String -Path $mod.FullName -Pattern '"client":"gametest"' -Quiet) -and (Select-String -Path $mod.FullName -Pattern 'bridge.disconnect' -Quiet)) { $result = "gametest passed"; break }
 }
 $result
 if ($result -ne "gametest passed") {
-  $l = Get-Content "$env:TEMP\mcd-gametest.log"
+  $l = Get-Content "$env:TEMP\quadcraft-gametest.log"
   $l | Select-String -Pattern "AssertionError|Exception|FAILED" -Context 0,4 | Select-Object -First 4 | ForEach-Object { $_.ToString().Substring(0, [Math]::Min(1200, $_.ToString().Length)) }
 }

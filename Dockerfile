@@ -6,7 +6,7 @@ WORKDIR /app
 COPY dashboard/package.json dashboard/package-lock.json ./
 RUN npm ci
 COPY dashboard/ ./
-ENV MCDRONE_BRIDGE_HOST=host.docker.internal
+ENV QUADCRAFT_BRIDGE_HOST=host.docker.internal
 EXPOSE 5318
 CMD ["npx", "vite", "--host", "0.0.0.0"]
 
@@ -17,5 +17,5 @@ WORKDIR /repo/training
 COPY training/pyproject.toml ./
 COPY training/src src
 RUN pip install --no-cache-dir -e ".[dev]"
-ENV MCDRONE_HOST=host.docker.internal
+ENV QUADCRAFT_HOST=host.docker.internal
 CMD ["sleep", "infinity"]

@@ -9,7 +9,7 @@ import {
 } from "./src/config.ts";
 
 // the dashboard container reaches the game on the host through host.docker.internal
-const bridgeHost = process.env.MCDRONE_BRIDGE_HOST ?? "127.0.0.1";
+const bridgeHost = process.env.QUADCRAFT_BRIDGE_HOST ?? "127.0.0.1";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

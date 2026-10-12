@@ -1,6 +1,6 @@
 import numpy as np
 
-from mcdrone import schematic
+from quadcraft import schematic
 
 
 def test_round_trip(tmp_path):

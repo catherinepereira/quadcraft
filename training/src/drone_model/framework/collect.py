@@ -16,8 +16,8 @@ import json
 from pathlib import Path
 
 import numpy as np
-from mcdrone import DroneEnv, list_episodes
-from mcdrone.dataset import action_array
+from quadcraft import DroneEnv, list_episodes
+from quadcraft.dataset import action_array
 
 from .. import labels as expert_labels
 from ..scripted.base import TOOLS, tool_action

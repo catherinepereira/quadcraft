@@ -1,4 +1,4 @@
-# mc-drone scope
+# Quadcraft scope
 
 Minecraft Java mod that adds a pilotable drone. A program outside the game can read what the drone sees and send it commands. The point is to record human flights and train models, starting with vision models, that fly the drone on their own.
 
@@ -17,11 +17,11 @@ Status: v1 (M0 to M6) done. v2 adds drone tools (inventory, mining, placing, con
 ## Layout
 
 ```
-mc-drone/                  one repo, Dockerfile and compose.yaml for the dashboard and training
+quadcraft/                  one repo, Dockerfile and compose.yaml for the dashboard and training
   docs/                    this plan and the bridge protocol
   mod/                     Fabric mod (Java)
   dashboard/               TypeScript dev dashboard (React + Vite + Tailwind v4), no backend
-  training/                Python packages `mcdrone` (bridge client, Gymnasium env, dataset loader) and `drone_model` (PyTorch, GPU)
+  training/                Python packages `quadcraft` (bridge client, Gymnasium env, dataset loader) and `drone_model` (PyTorch, GPU)
   scripts/                 start the containers and Minecraft
 ```
 

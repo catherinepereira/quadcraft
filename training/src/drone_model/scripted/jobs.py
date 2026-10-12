@@ -496,7 +496,7 @@ class BuildPlanner(JobPlanner):
         }
 
     def load_plan(self, job: dict) -> dict:
-        from mcdrone.schematic import load
+        from quadcraft.schematic import load
 
         if self.schematics is None:
             raise ValueError(f"build job for {job['schematic']} needs the schematics folder, pass --schematics")

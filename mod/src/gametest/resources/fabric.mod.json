@@ -1,13 +1,13 @@
 {
 	"schemaVersion": 1,
-	"id": "mcdrone-test",
+	"id": "quadcraft-test",
 	"version": "0.1.0",
-	"name": "MC Drone tests",
+	"name": "Quadcraft tests",
 	"environment": "*",
 	"entrypoints": {
-		"fabric-client-gametest": ["com.catherinepereira.mcdrone.test.DroneClientGameTest"]
+		"fabric-client-gametest": ["com.catherinepereira.quadcraft.test.DroneClientGameTest"]
 	},
 	"depends": {
-		"mcdrone": "*"
+		"quadcraft": "*"
 	}
 }

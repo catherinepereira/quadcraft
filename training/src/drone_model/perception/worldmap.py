@@ -29,7 +29,7 @@ DRONE_SPAN = 1.5
 
 def drone_mask_id(mask_ids: dict) -> int:
     """The mask stream's id for a drone, entities come after the blocks"""
-    return mask_ids["entityBase"] + mask_ids["entities"].index("mcdrone:drone")
+    return mask_ids["entityBase"] + mask_ids["entities"].index("quadcraft:drone")
 
 
 def perceivable(state: dict) -> dict:

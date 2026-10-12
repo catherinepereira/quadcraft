@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mc-drone-training"
+name = "quadcraft-training"
 version = "0.1.0"
-description = "mcdrone, the bridge client and Gymnasium env for the mc-drone mod, and drone_model, the block reader, job planners, and learned skill"
+description = "quadcraft, the bridge client and Gymnasium env for the Quadcraft mod, and drone_model, the block reader, job planners, and learned skill"
 authors = [{ name = "Cat Pereira" }]
 requires-python = ">=3.11"
 # torch comes from the CUDA index, see the README
@@ -21,7 +21,7 @@ dependencies = [
 dev = ["pytest>=8.4"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcdrone", "src/drone_model"]
+packages = ["src/quadcraft", "src/drone_model"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

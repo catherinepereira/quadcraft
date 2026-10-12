@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from mcdrone import DroneEnv
+from quadcraft import DroneEnv
 from torch import nn
 
 from ..paths import CHECKPOINTS, REPORTS

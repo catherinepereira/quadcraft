@@ -1,18 +1,18 @@
 {
 	"schemaVersion": 1,
-	"id": "mcdrone",
+	"id": "quadcraft",
 	"version": "${version}",
-	"name": "MC Drone",
+	"name": "Quadcraft",
 	"description": "A pilotable drone whose camera and controls are exposed over a local bridge for recording and training.",
 	"authors": ["Cat Pereira"],
 	"environment": "*",
 	"entrypoints": {
-		"main": ["com.catherinepereira.mcdrone.McDrone"],
-		"client": ["com.catherinepereira.mcdrone.client.McDroneClient"]
+		"main": ["com.catherinepereira.quadcraft.Quadcraft"],
+		"client": ["com.catherinepereira.quadcraft.client.QuadcraftClient"]
 	},
 	"mixins": [
 		{
-			"config": "mcdrone.client.mixins.json",
+			"config": "quadcraft.client.mixins.json",
 			"environment": "client"
 		}
 	],

@@ -7,16 +7,16 @@ loom {
 
 	runs.configureEach {
 		// recordings are training data, logs stay with the mod, both folders are gitignored
-		property("mcdrone.data", file("../training/data").absolutePath)
-		property("mcdrone.logs", file("run/logs").absolutePath)
+		property("quadcraft.data", file("../training/data").absolutePath)
+		property("quadcraft.logs", file("run/logs").absolutePath)
 		// keeps the client gametest world open this many seconds so an external script can drive the bridge
-		property("mcdrone.e2eHoldSeconds", (project.findProperty("e2eHold") ?: "0").toString())
+		property("quadcraft.e2eHoldSeconds", (project.findProperty("e2eHold") ?: "0").toString())
 		// Fabric API logs every custom packet at debug, which grows debug.log by hundreds of MB a training session
 		property("fabric.log.debug.level", "info")
 	}
 
 	mods {
-		"mcdrone" {
+		"quadcraft" {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}
@@ -26,7 +26,7 @@ loom {
 fabricApi {
 	configureTests {
 		createSourceSet = true
-		modId = "mcdrone-test"
+		modId = "quadcraft-test"
 		enableGameTests = false
 		enableClientGameTests = true
 		eula = true

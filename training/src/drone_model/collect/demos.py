@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from mcdrone import DroneEnv
+from quadcraft import DroneEnv
 
 from .. import labels
 from ..scripted.jobs import episode_expert

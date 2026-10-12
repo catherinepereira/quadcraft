@@ -2,13 +2,16 @@ import numpy as np
 import pytest
 from gymnasium.utils.env_checker import check_env
 
-from mcdrone import BridgeError, DroneClient, DroneEnv, action
+from quadcraft import BridgeError, DroneClient, DroneEnv, action
 
 from .fake_bridge import FakeBridge
 
+# the fake bridge listens locally, whatever QUADCRAFT_HOST points the real client at
+HOST = "127.0.0.1"
+
 
 def test_lockstep_reset_and_step():
-    with FakeBridge() as bridge, DroneClient(port=bridge.port) as client:
+    with FakeBridge() as bridge, DroneClient(HOST, bridge.port) as client:
         assert client.role == "controller"
         client.set_mode("lockstep")
         obs = client.reset(seed=1)
@@ -19,7 +22,7 @@ def test_lockstep_reset_and_step():
 
 
 def test_step_error_raises():
-    with FakeBridge() as bridge, DroneClient(port=bridge.port) as client:
+    with FakeBridge() as bridge, DroneClient(HOST, bridge.port) as client:
         client.reset(seed=1)
         with pytest.raises(BridgeError):
             client.step(action())
@@ -27,7 +30,7 @@ def test_step_error_raises():
 
 def test_env_passes_gymnasium_checker():
     with FakeBridge() as bridge:
-        env = DroneEnv(port=bridge.port, width=32, height=24, streams=("rgb", "depth"))
+        env = DroneEnv(host=HOST, port=bridge.port, width=32, height=24, streams=("rgb", "depth"))
         try:
             check_env(env, skip_render_check=True)
         finally:
@@ -36,7 +39,7 @@ def test_env_passes_gymnasium_checker():
 
 def test_tool_env_passes_checker_and_maps_actions():
     with FakeBridge() as bridge:
-        env = DroneEnv(port=bridge.port, width=32, height=24, task="dig_block")
+        env = DroneEnv(host=HOST, port=bridge.port, width=32, height=24, task="dig_block")
         try:
             check_env(env, skip_render_check=True)
             obs, _ = env.reset(seed=0)
@@ -51,7 +54,7 @@ def test_tool_env_passes_checker_and_maps_actions():
 
 def test_env_episode_ends_on_success():
     with FakeBridge() as bridge:
-        env = DroneEnv(port=bridge.port, width=32, height=24, hide_marker=False)
+        env = DroneEnv(host=HOST, port=bridge.port, width=32, height=24, hide_marker=False)
         try:
             obs, info = env.reset(seed=0)
             assert obs["state"].shape == (9,)

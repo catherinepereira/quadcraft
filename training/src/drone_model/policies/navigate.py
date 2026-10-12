@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-from mcdrone import state_vector
+from quadcraft import state_vector
 from torch import nn
 from torch.nn import functional as F
 

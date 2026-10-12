@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "quadcraft:block/marker"
+    }
+  }
+}

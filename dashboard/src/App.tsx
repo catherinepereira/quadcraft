@@ -23,7 +23,7 @@ type Tab = (typeof TABS)[number];
 
 function readTab(): Tab {
   try {
-    const saved = localStorage.getItem("mcdrone.tab");
+    const saved = localStorage.getItem("quadcraft.tab");
     return TABS.includes(saved as Tab) ? (saved as Tab) : "Live";
   } catch {
     return "Live";
@@ -48,7 +48,7 @@ export function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("mcdrone.tab", tab);
+      localStorage.setItem("quadcraft.tab", tab);
     } catch {
       // private windows can refuse storage, then the tab isn't remembered
     }
@@ -59,7 +59,7 @@ export function App() {
       <header className="border-border bg-card border-b">
         <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <div className="flex items-baseline gap-2">
-            <h1 className="text-lg font-semibold">MC Drone</h1>
+            <h1 className="text-lg font-semibold">Quadcraft</h1>
             <span className="text-text-muted text-sm">dev panel</span>
           </div>
           <nav className="flex flex-wrap gap-1">
@@ -107,7 +107,7 @@ export function App() {
       <main className="mx-auto max-w-[1500px] px-4 py-4">
         {!connected && (
           <p className="border-border bg-card text-text-muted mb-4 rounded-md border px-3 py-2 text-sm">
-            Waiting for the mod on port 8318. Start Minecraft with mc-drone
+            Waiting for the mod on port 8318. Start Minecraft with Quadcraft
             installed, it reconnects on its own.
           </p>
         )}

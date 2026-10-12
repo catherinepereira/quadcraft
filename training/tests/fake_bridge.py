@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 from websockets.sync.server import Server, ServerConnection, serve
 
-from mcdrone.protocol import SCHEMA, Observation, encode_obs
+from quadcraft.protocol import SCHEMA, Observation, encode_obs
 
 
 class FakeBridge:
@@ -84,7 +84,7 @@ class FakeBridge:
                 if msg.get("schema") != SCHEMA:
                     ws.send(json.dumps({"type": "error", "message": "schema mismatch"}))
                     continue
-                ws.send(json.dumps({"type": "welcome", "role": msg["role"], "schema": SCHEMA, "config": self.config, "status": self._status(), "maskIds": {"blocks": [], "entities": ["mcdrone:drone"], "entityBase": 32768}, "itemIds": ["minecraft:air", "minecraft:coal"]}))
+                ws.send(json.dumps({"type": "welcome", "role": msg["role"], "schema": SCHEMA, "config": self.config, "status": self._status(), "maskIds": {"blocks": [], "entities": ["quadcraft:drone"], "entityBase": 32768}, "itemIds": ["minecraft:air", "minecraft:coal"]}))
             elif kind == "configure":
                 if "mode" in msg:
                     self.mode = msg["mode"]

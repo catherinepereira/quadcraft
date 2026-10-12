@@ -15,7 +15,7 @@ from .reader import CLASSES, CROPS, MOBS, OTHER, SKY
 
 AIR = "minecraft:air"
 # blocks a mob can stand in or swim through, and the reader's catch-all, which is too vague to call solid
-NOT_SOLID = {AIR, "<other>", "minecraft:water", "mcdrone:marker", *CROPS}
+NOT_SOLID = {AIR, "<other>", "minecraft:water", "quadcraft:marker", *CROPS}
 # a cell needs this many votes before the drone believes anything is there
 MIN_VOTES = 4
 # votes a cell keeps when its block is broken, so later frames win quickly
@@ -169,7 +169,7 @@ class VoxelMemory:
 
     def schematic(self, lo, hi):
         """The box as a Sponge schematic, the copy job's read of its source"""
-        from mcdrone.schematic import Schematic
+        from quadcraft.schematic import Schematic
 
         w, h, l = (hi[i] - lo[i] + 1 for i in range(3))
         s = Schematic.empty(w, h, l)

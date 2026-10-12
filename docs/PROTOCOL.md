@@ -2,7 +2,7 @@
 
 Schema version: 2
 
-The mod listens on `127.0.0.1:8318`. The Python client (`training/src/mcdrone/protocol.py`) and the dashboard (`dashboard/src/protocol.ts`) both mirror this file. Bump the schema version on any breaking change, the mod rejects a `hello` with a different version.
+The mod listens on `127.0.0.1:8318`. The Python client (`training/src/quadcraft/protocol.py`) and the dashboard (`dashboard/src/protocol.ts`) both mirror this file. Bump the schema version on any breaking change, the mod rejects a `hello` with a different version.
 
 ## WebSocket `/ws`
 
@@ -18,7 +18,7 @@ Text frames are JSON objects with a `type` field. Binary frames are observations
 | `act` | `action` | controller, realtime mode |
 | `step` | `action`, `ticks`, `id` | controller, lockstep mode, answered by an `obs` with `replyTo` |
 | `reset` | `seed`, `options`, `id` | controller, answered by an `obs` with `replyTo` |
-| `record` | `on`, optional `test` | controller. With `test` the episodes go to the game folder's `mcdrone/test-recordings`, out of the training data. Recording a controller turned on stops when it releases or disconnects |
+| `record` | `on`, optional `test` | controller. With `test` the episodes go to the game folder's `quadcraft/test-recordings`, out of the training data. Recording a controller turned on stops when it releases or disconnects |
 | `pilot` | `on` | controller, moves the game camera into or out of the drone |
 | `release` | | controller, gives up control and becomes an observer |
 | `memory` | `step`, `changes`, optional `snapshot` and `focus`, see Drone memory | controller, relayed to every other client with `drone` added |
@@ -143,7 +143,7 @@ Header:
 - `collisions` counts the ticks something stopped the drone, `droneCollisions` the ones where it was another drone. Drones are solid to each other.
 - `camera` lets a script back-project depth into world points with the same frustum the mod rendered.
 - `events` holds tool events since the previous observation: `break`, `break_failed`, `place`, `place_failed`, `open`, `open_failed`, `close`, `transfer`, `transfer_failed`. A tool used with a flat battery fails with reason `battery flat`.
-- `tier` is the active drone's (`copper`, `iron`, `diamond`, or `netherite`), its pickaxe sets how fast blocks break. `battery` is its charge from 0 to 1, its home charging station or null, whether it's docked there, and the battery settings from `config/mcdrone-battery.json`: charge per tick of flight, the share hovering draws, the charge a broken block costs, charge per tick on the station, and the reserve to keep. With `enabled` false the charge never drops.
+- `tier` is the active drone's (`copper`, `iron`, `diamond`, or `netherite`), its pickaxe sets how fast blocks break. `battery` is its charge from 0 to 1, its home charging station or null, whether it's docked there, and the battery settings from `config/quadcraft-battery.json`: charge per tick of flight, the share hovering draws, the charge a broken block costs, charge per tick on the station, and the reserve to keep. With `enabled` false the charge never drops.
 - `collided` is true when a block or entity stopped the drone on the last simulated tick.
 - `range` is the drone's range sensors: the gap in blocks from its body to the nearest block straight ahead along its heading and straight down, null when nothing is within `max` (the config's `sensorRange`, default 4). They see blocks, not entities.
 - `health` is the drone's, out of `maxHealth` (20). Only mobs hurt a drone, their hits, arrows, and explosions, and a mob only goes after a drone that attacked it. A drone on its home station repairs, empty to full in about 20 seconds. At 0 a drone in the player's world is destroyed and drops its cargo and itself. A training arena's drone is wrecked instead and its episode ends, see Reward.
@@ -183,7 +183,7 @@ data/<task>/<episode_id>/
 
 Recordings are training data only. An episode's log lines are in the mod's session log, each tagged with its `episode`.
 
-Step `n` pairs the frame captured before action `n` with action `n`. The last step has `action: null` and carries the terminal frame. `pilot` is `bridge` or `keyboard`, and `client` names the bridge client that flew a `bridge` episode, such as `mcdrone-env`.
+Step `n` pairs the frame captured before action `n` with action `n`. The last step has `action: null` and carries the terminal frame. `pilot` is `bridge` or `keyboard`, and `client` names the bridge client that flew a `bridge` episode, such as `quadcraft-env`.
 
 ## Log line
 
@@ -269,7 +269,7 @@ The config's `perception` picks how the drone learns what blocks a job involves.
 
 ### Regions
 
-Regions are named boxes saved with the world in `mcdrone-regions.json`, at most 128 blocks across and any height. `status.regions` lists them as `{ "id", "name", "purpose", "box": [x0, y0, z0, x1, y1, z1] }`. Holding the tablet outlines each one in its purpose's color.
+Regions are named boxes saved with the world in `quadcraft-regions.json`, at most 128 blocks across and any height. `status.regions` lists them as `{ "id", "name", "purpose", "box": [x0, y0, z0, x1, y1, z1] }`. Holding the tablet outlines each one in its purpose's color.
 
 | Purpose | Effect |
 | --- | --- |

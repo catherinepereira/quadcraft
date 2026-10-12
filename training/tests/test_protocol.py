@@ -1,6 +1,6 @@
 import numpy as np
 
-from mcdrone.protocol import Observation, decode_obs, encode_obs
+from quadcraft.protocol import Observation, decode_obs, encode_obs
 
 
 def test_round_trip_keeps_arrays_and_header():

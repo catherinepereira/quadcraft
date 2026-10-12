@@ -1,6 +1,6 @@
 # dashboard
 
-Developer panel for the mc-drone mod. It shows the drone's camera, depth, and mask live, drives the drone, tails logs, browses recorded episodes, plots runtime metrics, and edits the mod config. It has no backend and talks straight to the mod's bridge.
+Developer panel for the Quadcraft mod. It shows the drone's camera, depth, and mask live, drives the drone, tails logs, browses recorded episodes, plots runtime metrics, and edits the mod config. It has no backend and talks straight to the mod's bridge.
 
 ## Setup
 
@@ -9,7 +9,7 @@ npm install
 npm run dev        # http://localhost:5318
 ```
 
-Start Minecraft with the mod first. The page reconnects every two seconds until the bridge on port 8318 answers. Vite proxies `/api` and `/ws` to the bridge, and the mod only accepts browser requests from `http://localhost:5318`. `MCDRONE_BRIDGE_HOST` sets where the bridge is, `127.0.0.1` by default and `host.docker.internal` in the dashboard container.
+Start Minecraft with the mod first. The page reconnects every two seconds until the bridge on port 8318 answers. Vite proxies `/api` and `/ws` to the bridge, and the mod only accepts browser requests from `http://localhost:5318`. `QUADCRAFT_BRIDGE_HOST` sets where the bridge is, `127.0.0.1` by default and `host.docker.internal` in the dashboard container.
 
 ## Tabs
 
@@ -20,7 +20,8 @@ Start Minecraft with the mod first. The page reconnects every two seconds until 
 | Episodes | Recorded episodes with a frame scrubber, per-step reward, and move to trash |
 | Logs | Live log tail with level, event, and episode filters, click a line for its full JSON |
 | Metrics | Steps and frames per second, capture and raycast time, encode time, bridge round trip, dropped frames, recorder queue |
-| Config | Frame size, streams, flight limits, arena settings, building materials, log level |
+| System | How a job runs from camera to action and how a policy is trained, with the learned models and the planner behind each job |
+| Config | Frame size, streams, flight limits, arena settings, building materials, log level and retention |
 
 The dashboard joins as an observer. Take control to switch modes, start an episode of any task and terrain, toggle recording, move stacks by clicking inventory slots, and drive with the keyboard (WASD, Space, Shift, arrow keys, F to mine, G to place, R to open or close a container). Release hands control back.
 

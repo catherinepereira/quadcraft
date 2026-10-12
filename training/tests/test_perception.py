@@ -4,7 +4,7 @@ import numpy as np
 
 from drone_model.perception.worldmap import DRONE_FRAMES, WorldMap
 
-MASK_IDS = {"blocks": ["minecraft:stone"], "entities": ["mcdrone:drone", "minecraft:zombie", "minecraft:cow"], "categories": ["misc", "monster", "creature"], "entityBase": 32768}
+MASK_IDS = {"blocks": ["minecraft:stone"], "entities": ["quadcraft:drone", "minecraft:zombie", "minecraft:cow"], "categories": ["misc", "monster", "creature"], "entityBase": 32768}
 
 
 def look(map_: WorldMap, pitch: float, depth: float, eye_y: float = 3.0) -> None:
@@ -151,7 +151,7 @@ def test_project_lands_on_the_pixel_backproject_came_from():
 def test_reader_labels_each_mob_kind_and_nothing_else():
     from drone_model.perception.reader import INDEX, SKY, entity_table
 
-    names = ["mcdrone:drone", "minecraft:zombie", "minecraft:cow", "minecraft:item", "minecraft:spider"]
+    names = ["quadcraft:drone", "minecraft:zombie", "minecraft:cow", "minecraft:item", "minecraft:spider"]
     assert list(entity_table(names)) == [SKY, INDEX["minecraft:zombie"], INDEX["minecraft:cow"], SKY, SKY]
 
 

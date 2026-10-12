@@ -31,7 +31,7 @@ export const BLOCK_COLORS: Record<string, string> = {
   "minecraft:wheat": "#b6a23a",
   "minecraft:glowstone": "#f2d16b",
   "minecraft:dripstone_block": "#86705c",
-  "mcdrone:marker": "#e8892b",
+  "quadcraft:marker": "#e8892b",
 };
 
 export function blockColor(label: string): string {

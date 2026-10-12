@@ -19,7 +19,7 @@ from .base import (
 
 class NavigateExpert(Planner):
     def decide(self, state: dict) -> dict:
-        marker = self.nearest(state, self.known("mcdrone:marker"))
+        marker = self.nearest(state, self.known("quadcraft:marker"))
         if marker is None:
             return self.explore(state)
         move, _ = self.fly(state, center(marker), standoff=0.0, column=(marker[0], marker[2]))

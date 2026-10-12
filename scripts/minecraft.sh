@@ -3,10 +3,13 @@
 # --arena opens a test world with the drone and an arena ready, so scripts can drive it without creating a world by hand
 set -euo pipefail
 mod="$(cd "$(dirname "$0")/../mod" && pwd)"
-if [ -z "${JAVA_HOME:-}" ]; then
-  jdk="$(ls -d "$HOME"/.jdks/jdk-25* 2>/dev/null | head -1 || true)"
-  [ -n "$jdk" ] || { echo "set JAVA_HOME to a JDK 25" >&2; exit 1; }
+# the system JAVA_HOME can be an older JDK, the mod needs 25
+jdk="$(ls -d "$HOME"/.jdks/jdk-25* 2>/dev/null | head -1 || true)"
+if [ -n "$jdk" ]; then
   export JAVA_HOME="$jdk"
+elif [ -z "${JAVA_HOME:-}" ]; then
+  echo "set JAVA_HOME to a JDK 25" >&2
+  exit 1
 fi
 if [ "${1:-}" = "--arena" ]; then
   "$mod/gradlew" -p "$mod" runClientGameTest "-Pe2eHold=${HOLD:-86400}" --console=plain

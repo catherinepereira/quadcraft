@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from mcdrone import list_episodes
+from quadcraft import list_episodes
 from torch.nn import functional as F
 
 from ..paths import CHECKPOINTS, DATA

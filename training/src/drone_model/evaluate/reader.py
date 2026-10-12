@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from mcdrone import DroneEnv
+from quadcraft import DroneEnv
 
 from ..paths import CHECKPOINTS, REPORTS
 from ..perception.core import DroneCore

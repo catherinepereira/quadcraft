@@ -1,4 +1,4 @@
-name: mc-drone
+name: quadcraft
 
 services:
   dashboard:

@@ -1,6 +1,6 @@
 # training
 
-Two Python packages. `mcdrone` is the client for the mod's bridge: a Gymnasium env for every task, a loader for recorded episodes, and `.schem` files. `drone_model` has the drone's perception core, the scripted planners, the learned policies and the framework that trains them, and the drone brain. How to write and train a policy, and how each one was trained, is in [POLICIES.md](POLICIES.md). Results are in [RESULTS.md](RESULTS.md).
+Two Python packages. `quadcraft` is the client for the mod's bridge: a Gymnasium env for every task, a loader for recorded episodes, and `.schem` files. `drone_model` has the drone's perception core, the scripted planners, the learned policies and the framework that trains them, and the drone brain. How to write and train a policy, and how each one was trained, is in [POLICIES.md](POLICIES.md). Results are in [RESULTS.md](RESULTS.md).
 
 ## Setup
 
@@ -15,7 +15,7 @@ Collection, evaluation, and videos need the game running with the mod and a worl
 ## Layout
 
 ```
-src/mcdrone/                  bridge client, Gymnasium env, episode loader, schematic files
+src/quadcraft/                  bridge client, Gymnasium env, episode loader, schematic files
 src/drone_model/brain.py      runs jobs and publishes the memory
 src/drone_model/energy.py     learned job costs, and the battery keeper that flies home to charge
 src/drone_model/labels.py     expert labels beside recorded episodes, and DART flight noise
@@ -53,12 +53,12 @@ Three layers, each reading the one below:
 
 Planners and pilots never keep maps of their own and never read the arena layout, `state["arena"]` and `state["marker"]` are left out before anything sees the state.
 
-## Client (`mcdrone`)
+## Client (`quadcraft`)
 
-Clients connect to `127.0.0.1:8318`, or to the host in `MCDRONE_HOST`.
+Clients connect to `127.0.0.1:8318`, or to the host in `QUADCRAFT_HOST`.
 
 ```python
-from mcdrone import DroneClient, action
+from quadcraft import DroneClient, action
 
 with DroneClient() as drone:
     drone.set_mode("lockstep")
@@ -68,7 +68,7 @@ with DroneClient() as drone:
 ```
 
 ```python
-from mcdrone import DroneEnv
+from quadcraft import DroneEnv
 
 env = DroneEnv(streams=("rgb", "depth"), record=True)
 obs, info = env.reset(seed=0)
@@ -76,9 +76,9 @@ obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 env.close()
 ```
 
-`record=True` saves episodes to the training data, `record="test"` to the game's `mcdrone/test-recordings` for runs that shouldn't train anything. Recording stops when the env closes.
+`record=True` saves episodes to the training data, `record="test"` to the game's `quadcraft/test-recordings` for runs that shouldn't train anything. Recording stops when the env closes.
 
-For navigate_to the env action is `[forward, right, up, yaw, pitch]` in [-1, 1], with yaw and pitch scaled to 15 degrees per tick. With `tools=True` (the tool tasks, and every framework run) the action is a dict: `move` (that vector), `tool` (index into `mcdrone.protocol.TOOLS`, `attack` holds the beam), `slot`, and `transfer` (`[kind, slot]`, kind 1 stores a drone stack in the open container, 2 takes one out). An optional `block`, such as `"minecraft:bricks"`, names the block to place, and the drone uses whichever slot holds it.
+For navigate_to the env action is `[forward, right, up, yaw, pitch]` in [-1, 1], with yaw and pitch scaled to 15 degrees per tick. With `tools=True` (the tool tasks, and every framework run) the action is a dict: `move` (that vector), `tool` (index into `quadcraft.protocol.TOOLS`, `attack` holds the beam), `slot`, and `transfer` (`[kind, slot]`, kind 1 stores a drone stack in the open container, 2 takes one out). An optional `block`, such as `"minecraft:bricks"`, names the block to place, and the drone uses whichever slot holds it.
 
 Observations hold the image streams, a 6-value state vector (velocity, sin and cos of yaw, pitch), `bounds`, the drone's position inside the geofence from -1 to 1 per axis, and `range`, the range sensors ahead and below as a share of their reach (1 when nothing is in range). Tool tasks add `inventory` and `container` as `[item index, count]` per slot (indices into `DroneClient.item_ids`) and `tool_state` (mining progress, container open, selected slot). Pass `hide_marker=False` to append the marker offset to the state vector, for debugging only.
 
@@ -89,7 +89,7 @@ Jobs put the drone's instruction in `info["state"]["job"]`, see [docs/PROTOCOL.m
 Schematics (`.schem`, the Sponge format WorldEdit uses):
 
 ```python
-from mcdrone import schematic
+from quadcraft import schematic
 
 s = schematic.load("house.schem")
 s.size, s.get(0, 0, 0)  # (width, height, length), "minecraft:oak_planks"
@@ -99,7 +99,7 @@ s.save("copy.schem")
 Recorded episodes:
 
 ```python
-from mcdrone import list_episodes, iter_transitions
+from quadcraft import list_episodes, iter_transitions
 
 episodes = list_episodes("data", outcome="success")
 for sample in iter_transitions(episodes):
@@ -198,7 +198,7 @@ powershell -File scripts\dagger_skill.ps1 -Round 1                             #
 
 ```powershell
 .venv\Scripts\python -m pytest                                              # fake bridge, no game needed
-$env:MCDRONE_E2E = "1"; .venv\Scripts\python -m pytest tests\test_e2e.py   # against a running game
+$env:QUADCRAFT_E2E = "1"; .venv\Scripts\python -m pytest tests\test_e2e.py   # against a running game
 ```
 
 ## Known limitations

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .reader import MOB_SET
 from .worldmap import backproject, project
 
 # hits closer than this belong to the same mob, and a sighting this close to a mob of another kind is that mob misread
@@ -40,13 +41,9 @@ def hostile_ids(mask_ids: dict) -> set[int]:
 
 
 def mob_ids(mask_ids: dict) -> dict[int, str]:
-    """Mask id to entity name for every kind of mob: the mob categories, which leave out items, players, and drones, and villagers"""
+    """Mask id to entity name for every kind of mob the reader learns, see classes.py"""
     base = mask_ids["entityBase"]
-    categories = mask_ids.get("categories", [])
-    return {
-        base + j: name for j, name in enumerate(mask_ids["entities"])
-        if (j < len(categories) and categories[j] != "misc") or name == "minecraft:villager"
-    }
+    return {base + j: name for j, name in enumerate(mask_ids["entities"]) if name in MOB_SET}
 
 
 def prey_ids(prey, mask_ids: dict) -> set[int]:

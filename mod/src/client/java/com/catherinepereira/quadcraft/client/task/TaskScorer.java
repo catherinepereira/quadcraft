@@ -463,6 +463,8 @@ public final class TaskScorer {
 			}
 			// see follow
 			case FOLLOW_MOB, FOLLOW_PLAYER -> null;
+			// nothing to reach, a studio scene is only looked at
+			case STUDIO -> null;
 		};
 	}
 

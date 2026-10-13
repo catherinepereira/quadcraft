@@ -17,6 +17,7 @@ Text frames are JSON objects with a `type` field. Binary frames are observations
 | `configure` | any of `mode`, `width`, `height`, `streams`, `streamHz`, and other config fields | controller |
 | `act` | `action` | controller, realtime mode |
 | `step` | `action`, `ticks`, `id` | controller, lockstep mode, answered by an `obs` with `replyTo` |
+| `view` | `pose` as `[x, y, z, yaw, pitch]` of the camera, `id` | controller, lockstep mode. Puts the drone's camera at `pose` and steps one idle tick, answered by an `obs` with `replyTo`. For the views of a `studio` scene |
 | `reset` | `seed`, `options`, `id` | controller, answered by an `obs` with `replyTo` |
 | `record` | `on`, optional `test` | controller. With `test` the episodes go to the game folder's `quadcraft/test-recordings`, out of the training data. Recording a controller turned on stops when it releases or disconnects |
 | `pilot` | `on` | controller, moves the game camera into or out of the drone |
@@ -229,6 +230,7 @@ Every task subtracts `collisionPenalty` (config, default 0.05) on ticks the dron
 | find_block | get within 1.5 blocks of the one block of the named kind, among 3 look-alikes of other kinds | none | distance closed to the nearest one | 1500 |
 | follow_mob | stay 2 to 5 blocks from a villager wandering inside the arena's wall for 200 ticks | none | gap to that band closed, +10 spread over the 200 ticks | 1500 |
 | dock_station | dock on a charging station on the ground or a pedestal up to 2 high, given as a `return_home` job | none | distance closed to the spot over it | 600 |
+| studio | none, the arena is for block reader frames: the block or mob named by the `subject` option on a pedestal, as a 2x2x2 cube, or in a basin, with up to 8 random neighbors, a random ground, wall, or light, and a random time of day. `state.arena` carries `subject`, `subjectBox`, and up to 8 `views`, camera poses to send as `view` messages | none | none | 600 |
 
 ## Jobs
 

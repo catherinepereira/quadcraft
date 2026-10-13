@@ -2,8 +2,11 @@ package com.catherinepereira.quadcraft.client.obs;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.block.Block;
 import org.jspecify.annotations.Nullable;
 
 /** Names by raw id for the mask stream and the inventory, sent once in the bridge's welcome */
@@ -14,13 +17,19 @@ public final class IdTables {
 	private IdTables() {
 	}
 
-	/** blocks[i] is mask id i + 1, entities[j] is id entityBase + j, categories[j] is that entity's mob category */
+	/**
+	 * blocks[i] is mask id i + 1 and solid[i] whether it stops a mob, entities[j] is id entityBase + j, categories[j] is
+	 * that entity's mob category
+	 */
 	public static JsonObject maskIds() {
 		if (maskIds == null) {
 			JsonObject json = new JsonObject();
 			JsonArray blocks = new JsonArray();
+			JsonArray solid = new JsonArray();
 			for (int i = 0; i < BuiltInRegistries.BLOCK.size(); i++) {
-				blocks.add(BuiltInRegistries.BLOCK.getKey(BuiltInRegistries.BLOCK.byId(i)).toString());
+				Block block = BuiltInRegistries.BLOCK.byId(i);
+				blocks.add(BuiltInRegistries.BLOCK.getKey(block).toString());
+				solid.add(!block.defaultBlockState().getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty());
 			}
 			JsonArray entities = new JsonArray();
 			JsonArray categories = new JsonArray();
@@ -30,6 +39,7 @@ public final class IdTables {
 				categories.add(type.getCategory().getSerializedName());
 			}
 			json.add("blocks", blocks);
+			json.add("solid", solid);
 			json.addProperty("entityBase", Raycaster.ENTITY_BASE);
 			json.add("entities", entities);
 			json.add("categories", categories);

@@ -27,7 +27,7 @@ public final class JobOptions {
 			options.getAsJsonArray("blocks").forEach(e -> names.add(e.getAsString()));
 			return String.join(",", names);
 		}
-		for (String key : new String[] {"schematic", "blocks", "block", "crop", "rounds"}) {
+		for (String key : new String[] {"schematic", "blocks", "block", "crop", "rounds", "subject"}) {
 			if (options.has(key)) {
 				return options.get(key).getAsString();
 			}
@@ -167,7 +167,7 @@ public final class JobOptions {
 			case CHEST_TRANSFER -> 600;
 			case MINE_AND_DELIVER, REPLICATE_BUILD -> 900;
 			case HARVEST_CROPS, PATROL_AREA, FIND_BLOCK, FOLLOW_MOB -> 1500;
-			case GOTO_POINT, DOCK_STATION -> 600;
+			case GOTO_POINT, DOCK_STATION, STUDIO -> 600;
 			case HUNT_MOBS -> 3000;
 			case COPY_BUILD, SCHEMATIC_BUILD, MINE_DEPOSIT, GATHER_BUILD -> 20000;
 			// a job runs until it's done or stopped, sized for the largest 16x16x16 builds

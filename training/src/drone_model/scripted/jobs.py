@@ -194,7 +194,7 @@ class JobPlanner(Planner):
 
     def unseen(self, cell) -> bool:
         c = self.memory.cells.get(cell)
-        return (c is None or c.votes.sum() < MIN_VOTES) and self.map.air.get(cell, 0) < 3
+        return (c is None or c.total() < MIN_VOTES) and self.map.air.get(cell, 0) < 3
 
     def empty(self, cell) -> bool:
         return cell in self.dug or (self.believed(cell) == AIR and not self.unseen(cell))
@@ -319,8 +319,7 @@ class JobPlanner(Planner):
     def share(self, cell, block: str) -> float:
         """The share of a cell's votes for block"""
         c = self.memory.cells.get(cell)
-        total = 0.0 if c is None else float(c.votes.sum())
-        return 0.0 if total == 0 else float(c.votes[INDEX[block]]) / total
+        return 0.0 if c is None else c.share(INDEX[block])
 
     @staticmethod
     def region_cells(box) -> list[tuple[int, int, int]]:
@@ -428,7 +427,7 @@ class BuildPlanner(JobPlanner):
         self.recheck = [c for c in cells if self.close_views([c], self.source)]
         for cell in self.recheck:
             if cell in self.memory.cells:
-                self.memory.cells[cell].votes[:] = 0
+                self.memory.cells[cell].reset()
                 self.memory.touch(cell)
         self.views = self.close_views(self.recheck, self.source)
         if not self.recheck:
@@ -477,9 +476,8 @@ class BuildPlanner(JobPlanner):
     def carried_alternative(self, cell, carried: set[str]) -> str | None:
         """The carried block with the most votes in cell, if it has at least CARRIED_SHARE of the leader's"""
         votes = self.memory.cells[cell].votes
-        options = [i for i, name in enumerate(CLASSES) if name in carried]
-        best = max(options, key=lambda i: votes[i], default=None)
-        if best is not None and votes[best] > 0 and votes[best] >= CARRIED_SHARE * votes.max():
+        best = max((i for i in votes if CLASSES[i] in carried), key=votes.get, default=None)
+        if best is not None and votes[best] > 0 and votes[best] >= CARRIED_SHARE * max(votes.values()):
             return CLASSES[best]
         return None
 

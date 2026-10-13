@@ -25,6 +25,7 @@ public enum TaskKind {
 	FIND_BLOCK("find_block"),
 	FOLLOW_MOB("follow_mob"),
 	DOCK_STATION("dock_station"),
+	STUDIO("studio"),
 	FLY_TO("fly_to"),
 	SEEK_BLOCK("seek_block"),
 	FOLLOW_PLAYER("follow_player");

@@ -17,6 +17,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
 import org.jspecify.annotations.Nullable;
 
 /** One player's current arena, the server's source of truth for task progress */
@@ -48,6 +49,11 @@ public final class ArenaRecord {
 	public @Nullable JsonObject scan;
 	// overrides the geofence the client derives from origin and radius, as x0, y0, z0, x1, y1, z1
 	public int @Nullable [] fence;
+	// a studio scene's block or mob, its box, and the camera poses of it as x, y, z, yaw, pitch
+	public @Nullable String subject;
+	public @Nullable AABB subjectBox;
+	public boolean subjectIsBlock;
+	public final List<float[]> views = new ArrayList<>();
 
 	ArenaRecord(TaskKind kind, BlockPos origin, int radius) {
 		this.kind = kind;
@@ -69,7 +75,7 @@ public final class ArenaRecord {
 	 */
 	public int[] metrics(ServerLevel level, DroneEntity drone) {
 		return switch (this.kind) {
-			case NAVIGATE_TO -> new int[0];
+			case NAVIGATE_TO, STUDIO -> new int[0];
 			case DIG_BLOCK -> new int[] {this.remainingTargets(level)};
 			case PLACE_BLOCK -> new int[] {
 				this.goal != null && level.getBlockState(this.goal).is(this.goalBlock) ? 1 : 0, this.wrongPlacements
@@ -158,6 +164,26 @@ public final class ArenaRecord {
 			json.add("referenceBase", Json.pos(this.referenceBase));
 			json.add("buildBase", Json.pos(this.buildBase));
 			json.add("blueprint", this.blueprint.toJson());
+		}
+		if (this.subject != null) {
+			json.addProperty("subject", this.subject);
+			if (this.subjectBox != null) {
+				AABB b = this.subjectBox;
+				JsonArray box = new JsonArray();
+				for (double v : new double[] {b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ}) {
+					box.add(v);
+				}
+				json.add("subjectBox", box);
+			}
+			JsonArray views = new JsonArray();
+			for (float[] view : this.views) {
+				JsonArray v = new JsonArray();
+				for (float f : view) {
+					v.add(f);
+				}
+				views.add(v);
+			}
+			json.add("views", views);
 		}
 		if (this.requiredCount > 0) {
 			json.addProperty("requiredCount", this.requiredCount);

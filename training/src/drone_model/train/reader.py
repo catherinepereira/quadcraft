@@ -1,6 +1,6 @@
 """
-Trains the block reader on recorded frames that carry the state stream.
-Labels come from the mod's block state ids, and for mobs from the mask stream's entity ids by mob category.
+Trains the block reader on the studio frames from collect.studio, shards of rgb, depth, and per-pixel labels.
+Labels come from the mod's block state ids, and for mobs from the mask stream's entity ids.
 The reader itself only gets rgb and depth
 """
 
@@ -13,66 +13,27 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from quadcraft import list_episodes
 from torch.nn import functional as F
 
 from ..paths import CHECKPOINTS, DATA
-from ..perception.reader import CLASSES, NOT_CROP, BlockReader, entity_table, state_tables
-from ..torch_utils import BestCheckpoint, autocast, pick_device, split_episodes, write_report
+from ..perception.reader import CLASS_HASH, CLASSES, NOT_CROP, BlockReader
+from ..torch_utils import BestCheckpoint, Throttle, autocast, pick_device, split_episodes, write_report
 
-# named for the class list, the cached labels are class indices
-CACHE = "reader-frames-kinds"
 FIELDS = ("rgb", "depth", "cls", "ripe")
-# neighboring frames are nearly identical, keep every STRIDE-th
-STRIDE = 3
-
-
-def cache_dir(episode) -> Path:
-    """data/cache/<CACHE>/<task>/<episode>, apart from the recording, so a stale cache is one folder to drop"""
-    return episode.path.parents[1] / "cache" / CACHE / episode.path.parent.name / episode.path.name
-
-
-def cache_episode(episode, classes: np.ndarray, ripe: np.ndarray, entities: np.ndarray, entity_base: int) -> dict[str, np.ndarray] | None:
-    cache = cache_dir(episode)
-    if not (cache / "done").exists():
-        frames = [n for n in range(0, len(episode.steps), STRIDE) if episode.has("state", n) and episode.has("rgb", n)]
-        if not frames:
-            return None
-        parts: dict[str, list] = {k: [] for k in FIELDS}
-        for n in frames:
-            ids = episode.block_states(n)
-            cls = classes[np.minimum(ids, len(classes) - 1)]
-            if episode.has("mask", n):
-                # the state stream has nothing for entities, the mask names them
-                mask = episode.mask(n).astype(np.int64)
-                mob = (mask >= entity_base) & (mask - entity_base < len(entities))
-                cls[mob] = entities[mask[mob] - entity_base]
-            parts["rgb"].append(episode.rgb(n))
-            parts["depth"].append(episode.depth(n).astype(np.float16))
-            parts["cls"].append(cls)
-            parts["ripe"].append(ripe[np.minimum(ids, len(ripe) - 1)])
-        cache.mkdir(exist_ok=True)
-        for k, v in parts.items():
-            np.save(cache / f"{k}.npy", np.stack(v))
-        (cache / "done").touch()
-    return {k: np.load(cache / f"{k}.npy", mmap_mode="r") for k in FIELDS}
 
 
 def load_frames(data: Path) -> list[dict[str, np.ndarray]]:
-    out = []
-    for task_dir in sorted(p for p in data.iterdir() if (p / "state_names.json").exists()):
-        classes, ripe = state_tables(json.loads((task_dir / "state_names.json").read_text(encoding="utf-8")))
-        mask_ids = json.loads((task_dir / "mask_ids.json").read_text(encoding="utf-8"))
-        entities = entity_table(mask_ids["entities"])
-        # an episode without an outcome is still being recorded
-        episodes = [ep for ep in list_episodes(data, task_dir.name) if (ep.path / "state").is_dir() and ep.meta.get("outcome")]
-        for ep in episodes:
-            frames = cache_episode(ep, classes, ripe, entities, mask_ids["entityBase"])
-            if frames is not None:
-                out.append(frames)
-        print(f"{task_dir.name}: {len(episodes)} episodes", flush=True)
+    """Every finished shard memory-mapped, shards labeled for another class list left out"""
+    out, stale = [], 0
+    for shard in sorted(p for p in data.glob("shard-*") if (p / "done").exists()):
+        if json.loads((shard / "meta.json").read_text(encoding="utf-8"))["classes"] != CLASS_HASH:
+            stale += 1
+            continue
+        out.append({**{k: np.load(shard / f"{k}.npy", mmap_mode="r") for k in FIELDS}, "shard": shard.name})
+    if stale:
+        print(f"left out {stale} shards labeled for another class list", flush=True)
     if not out:
-        raise SystemExit(f"no frames with the state stream in {data}, record with --streams rgb,depth,mask,state")
+        raise SystemExit(f"no studio shards in {data}, collect some with python -m drone_model.collect.studio")
     return out
 
 
@@ -86,7 +47,7 @@ def sample(episodes, batch: int, rng: np.random.Generator, augment: bool) -> dic
         for k in FIELDS:
             v = np.asarray(ep[k][n])
             rows[k].append(v[:, ::-1].copy() if flip else v)
-    out = {k: torch.from_numpy(np.stack(v)) for k, v in rows.items()}
+    out = {k: torch.from_numpy(np.stack(v).astype(np.int64) if k == "cls" else np.stack(v)) for k, v in rows.items()}
     if augment:
         scale = torch.empty(batch, 1, 1, 1).uniform_(0.7, 1.3)
         out["rgb"] = (out["rgb"].float() * scale).clamp(0, 255).to(torch.uint8)
@@ -99,34 +60,39 @@ def class_weights(episodes, rng: np.random.Generator) -> torch.Tensor:
     for ep in episodes[:: max(1, len(episodes) // 40)]:
         counts += np.bincount(np.asarray(ep["cls"][:: 5]).ravel(), minlength=len(CLASSES))
     w = 1.0 / np.sqrt(np.maximum(counts / counts.sum(), 1e-5))
-    return torch.tensor(w / w.mean(), dtype=torch.float32)
+    # scaled by the classes the data has, most of the list may be missing from a small set
+    return torch.tensor(w / w[counts > 0].mean(), dtype=torch.float32)
 
 
-def evaluate(model, episodes, device, rng) -> dict[str, float]:
+def evaluate(model, episodes, device, rng, throttle: Throttle | None = None) -> dict[str, float]:
     model.eval()
-    inter = np.zeros(len(CLASSES))
-    union = np.zeros(len(CLASSES))
+    n = len(CLASSES)
+    inter = torch.zeros(n, dtype=torch.float64, device=device)
+    union = torch.zeros(n, dtype=torch.float64, device=device)
     correct = total = ripe_ok = ripe_n = 0
     with torch.no_grad():
         for ep in episodes:
             for start in range(0, len(ep["cls"]), 32):
                 rgb = torch.from_numpy(np.asarray(ep["rgb"][start : start + 32])).to(device)
                 depth = torch.from_numpy(np.asarray(ep["depth"][start : start + 32]).astype(np.float32)).to(device)
-                cls = np.asarray(ep["cls"][start : start + 32])
+                cls = torch.from_numpy(np.asarray(ep["cls"][start : start + 32]).astype(np.int64)).to(device)
                 ripe = np.asarray(ep["ripe"][start : start + 32])
                 logits, ripe_logits = model(rgb, depth)
-                pred = logits.argmax(1).cpu().numpy()
-                correct += (pred == cls).sum()
-                total += cls.size
-                for c in range(len(CLASSES)):
-                    p, t = pred == c, cls == c
-                    inter[c] += (p & t).sum()
-                    union[c] += (p | t).sum()
+                pred = logits.argmax(1)
+                hit = pred == cls
+                correct += int(hit.sum())
+                total += cls.numel()
+                both = torch.bincount(cls[hit], minlength=n)
+                inter += both
+                union += torch.bincount(pred.ravel(), minlength=n) + torch.bincount(cls.ravel(), minlength=n) - both
                 crop = ripe != NOT_CROP
                 if crop.any():
                     ripe_pred = (ripe_logits[:, 0].cpu().numpy() > 0)[crop]
                     ripe_ok += (ripe_pred == (ripe[crop] == 1)).sum()
                     ripe_n += crop.sum()
+                if throttle is not None:
+                    throttle()
+    inter, union = inter.cpu().numpy(), union.cpu().numpy()
     present = union > 0
     iou = inter[present] / union[present]
     per_class = {CLASSES[c]: float(inter[c] / union[c]) for c in np.flatnonzero(present)}
@@ -147,7 +113,7 @@ def init_from(model: BlockReader, checkpoint: Path, device) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", type=Path, default=DATA)
+    parser.add_argument("--data", type=Path, default=DATA / "studio")
     parser.add_argument("--steps", type=int, default=6000)
     parser.add_argument("--batch-size", type=int, default=24)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -155,13 +121,14 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=CHECKPOINTS / "reader.pt")
     parser.add_argument("--init", type=Path, default=None, help="start from a trained reader, classes it doesn't have start fresh")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--gpu-share", type=float, default=1.0, help="the share of the time the GPU works, 0.4 leaves room for a game")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
     device = pick_device()
     train, val = split_episodes(load_frames(args.data), 0.1, rng)
-    print(f"train {len(train)} episodes ({sum(len(e['cls']) for e in train)} frames), val {len(val)} episodes, device {device}", flush=True)
+    print(f"train {len(train)} shards ({sum(len(e['cls']) for e in train)} frames), val {len(val)} shards, device {device}", flush=True)
 
     model = BlockReader().to(device)
     if args.init is not None:
@@ -172,6 +139,7 @@ def main() -> None:
     best = BestCheckpoint(args.out, higher_is_better=True)
     history = []
     start = time.perf_counter()
+    throttle = Throttle(args.gpu_share)
     for step in range(1, args.steps + 1):
         model.train()
         b = {k: v.to(device, non_blocking=True) for k, v in sample(train, args.batch_size, rng, augment=True).items()}
@@ -185,8 +153,9 @@ def main() -> None:
         loss.backward()
         optimizer.step()
         scheduler.step()
+        throttle()
         if step % args.eval_every == 0 or step == args.steps:
-            metrics = evaluate(model, val, device, rng)
+            metrics = evaluate(model, val, device, rng, throttle)
             history.append({"step": step, "loss": loss.item(), **{k: v for k, v in metrics.items() if k != "per_class_iou"}})
             saved = best.offer(metrics["mean_iou"], model=model.state_dict(), step=step, metrics=metrics, classes=CLASSES)
             if saved:

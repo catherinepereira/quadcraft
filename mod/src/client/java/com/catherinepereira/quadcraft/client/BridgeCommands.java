@@ -127,7 +127,7 @@ final class BridgeCommands {
 				}
 				ClientPlayNetworking.send(new RenameDronePayload(msg.has("name") ? msg.get("name").getAsString() : ""));
 			}
-			case "configure", "act", "step", "reset", "record", "pilot", "release" -> {
+			case "configure", "act", "step", "view", "reset", "record", "pilot", "release" -> {
 				if (run == null) {
 					session.error(type + " needs the controller role", id);
 					return;
@@ -224,6 +224,7 @@ final class BridgeCommands {
 				run.setBridgeAction(DroneAction.fromJson(msg.getAsJsonObject("action"), this.runtime.config().maxLookPerTick, DroneEntity.INVENTORY_SIZE));
 			}
 			case "step" -> this.step(session, run, msg, id);
+			case "view" -> this.view(session, run, msg, id);
 			case "reset" -> {
 				long seed = msg.has("seed") && !msg.get("seed").isJsonNull() ? msg.get("seed").getAsLong() : this.seeds.nextLong() & 0xFFFFFFFFL;
 				JsonObject options = msg.has("options") && msg.get("options").isJsonObject() ? msg.getAsJsonObject("options") : new JsonObject();
@@ -274,6 +275,21 @@ final class BridgeCommands {
 		int ticks = msg.has("ticks") ? Math.clamp(msg.get("ticks").getAsInt(), 1, 100) : 1;
 		JsonObject actionJson = msg.has("action") ? msg.getAsJsonObject("action") : new JsonObject();
 		this.runtime.stepAndCapture(run, DroneAction.fromJson(actionJson, this.runtime.config().maxLookPerTick, DroneEntity.INVENTORY_SIZE), ticks, session, id);
+	}
+
+	// puts the drone's camera at pose, x, y, z, yaw, pitch, and answers with the frame from there, for studio scenes
+	private void view(Session session, DroneRun run, JsonObject msg, @Nullable Integer id) {
+		DroneEntity drone = run.drone();
+		if (drone == null || !msg.has("pose")) {
+			session.error(drone == null ? "no drone, send reset first" : "view takes pose, [x, y, z, yaw, pitch]", id);
+			return;
+		}
+		var pose = msg.getAsJsonArray("pose");
+		run.controller.setPose(
+			pose.get(0).getAsDouble(), pose.get(1).getAsDouble() - drone.getEyeHeight(), pose.get(2).getAsDouble(), pose.get(3).getAsFloat(), pose.get(4).getAsFloat()
+		);
+		run.controller.sendPose();
+		this.step(session, run, new JsonObject(), id);
 	}
 
 	private void release(DroneRun run, String reason) {

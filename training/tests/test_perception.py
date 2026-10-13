@@ -151,8 +151,8 @@ def test_project_lands_on_the_pixel_backproject_came_from():
 def test_reader_labels_each_mob_kind_and_nothing_else():
     from drone_model.perception.reader import INDEX, SKY, entity_table
 
-    names = ["quadcraft:drone", "minecraft:zombie", "minecraft:cow", "minecraft:item", "minecraft:spider"]
-    assert list(entity_table(names)) == [SKY, INDEX["minecraft:zombie"], INDEX["minecraft:cow"], SKY, SKY]
+    names = ["quadcraft:drone", "minecraft:zombie", "minecraft:cow", "minecraft:item", "minecraft:spider", "minecraft:iron_golem"]
+    assert list(entity_table(names)) == [SKY, INDEX["minecraft:zombie"], INDEX["minecraft:cow"], SKY, INDEX["minecraft:spider"], INDEX["minecraft:iron_golem"]]
 
 
 def test_a_zombie_beside_a_cow_stays_two_mobs_of_their_kinds():
@@ -222,3 +222,16 @@ def test_a_ground_truth_frame_fills_the_memory_and_the_mob_tracker():
         core.see(state, {"depth": depth, "mask": mask})
     assert core.memory.label((4, 7, 6)) == "minecraft:stone"
     assert len(core.mobs.mobs) == 1
+
+
+def test_look_alikes_read_as_the_block_they_copy_and_solidity_comes_from_the_game():
+    from drone_model.perception.memory import MIN_VOTES, Cell, VoxelMemory
+    from drone_model.perception.reader import INDEX, OTHER, state_tables
+
+    classes, _ = state_tables(["minecraft:infested_stone", "minecraft:waxed_copper_block[]", "minecraft:petrified_oak_slab[type=top]", "minecraft:no_such_block"])
+    assert list(classes[1:]) == [INDEX["minecraft:stone"], INDEX["minecraft:copper_block"], INDEX["minecraft:oak_slab"], OTHER]
+    memory = VoxelMemory()
+    for key, block in (((0, 0, 0), "minecraft:stone"), ((1, 0, 0), "minecraft:poppy"), ((2, 0, 0), "minecraft:oak_slab")):
+        memory.cells[key] = Cell()
+        memory.cells[key].reset(INDEX[block], MIN_VOTES)
+    assert [memory.solid(k) for k in ((0, 0, 0), (1, 0, 0), (2, 0, 0))] == [True, False, True]

@@ -1,10 +1,11 @@
 """
-The block reader: a small U-Net that looks at the camera image and depth and says, per pixel, which block it is,
-whether a crop is ripe, and which kind of mob it is. It is trained on the mod's mask and state streams and
-needs neither when it runs
+The block reader: a small U-Net that labels each pixel of the camera image and depth with the block or kind of mob it
+shows, and whether a crop is ripe. It is trained on the mod's mask and state streams and needs neither when it runs
 """
 
 from __future__ import annotations
+
+import hashlib
 
 import numpy as np
 import torch
@@ -12,53 +13,21 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..torch_utils import load_weights, pick_device
-from .blocks import BUILD_PALETTE
+from .classes import alias, load
 
 SKY, OTHER = 0, 1
-# the mobs the reader tells apart, by the mask's entity names: the hunt arenas' hostile and passive kinds and follow_mob's villager
-MOB_KINDS = (
-    "minecraft:zombie",
-    "minecraft:husk",
-    "minecraft:skeleton",
-    "minecraft:creeper",
-    "minecraft:cow",
-    "minecraft:pig",
-    "minecraft:sheep",
-    "minecraft:chicken",
-    "minecraft:villager",
-)
-# what the reader tells apart: the build palette, the arenas' bases and floors, terrain, what jobs work with, and mobs
-CLASSES = (
-    "<sky>",
-    "<other>",
-    *BUILD_PALETTE,
-    "minecraft:cyan_concrete",
-    "minecraft:lime_concrete",
-    "minecraft:light_gray_concrete",
-    "minecraft:gray_concrete",
-    "minecraft:stone_bricks",
-    "minecraft:grass_block",
-    "minecraft:dirt",
-    "minecraft:stone",
-    "minecraft:tuff",
-    "minecraft:gravel",
-    "minecraft:oak_log",
-    "minecraft:oak_leaves",
-    "minecraft:coal_ore",
-    "minecraft:chest",
-    "minecraft:farmland",
-    "minecraft:water",
-    "minecraft:wheat",
-    "minecraft:carrots",
-    "minecraft:potatoes",
-    "minecraft:beetroots",
-    "minecraft:glowstone",
-    "minecraft:dripstone_block",
-    "quadcraft:marker",
-    *MOB_KINDS,
-)
+_spec = load()
+# every block a camera can show and every kind of mob, see classes.py
+BLOCK_KINDS = tuple(b["name"] for b in _spec["blocks"])
+MOB_KINDS = tuple(_spec["mobs"])
+CLASSES = ("<sky>", "<other>", *BLOCK_KINDS, *MOB_KINDS)
 INDEX = {name: i for i, name in enumerate(CLASSES)}
-MOBS = np.asarray([INDEX[name] for name in MOB_KINDS], dtype=np.uint8)
+# names the class list, labels saved as class indices only fit the list they were made for
+CLASS_HASH = hashlib.sha1("\n".join(CLASSES).encode()).hexdigest()[:8]
+MOBS = np.asarray([INDEX[name] for name in MOB_KINDS], dtype=np.uint16)
+MOB_SET = frozenset(MOB_KINDS)
+# blocks a mob can't stand inside, from the game's collision shapes
+SOLID = frozenset(b["name"] for b in _spec["blocks"] if b["solid"])
 CROPS = ("minecraft:wheat", "minecraft:carrots", "minecraft:potatoes", "minecraft:beetroots")
 # ripe label for pixels that aren't a crop, left out of the ripeness loss
 NOT_CROP = 255
@@ -70,7 +39,7 @@ def state_tables(state_names: list[str]) -> tuple[np.ndarray, np.ndarray]:
     Lookup tables from the state stream (0 sky, 1 + state id) to a class index and a ripe flag (1 ripe, 0 growing,
     NOT_CROP for anything else). A crop is ripe at the highest age its block has
     """
-    classes = np.full(len(state_names) + 1, OTHER, dtype=np.uint8)
+    classes = np.full(len(state_names) + 1, OTHER, dtype=np.uint16)
     ripe = np.full(len(state_names) + 1, NOT_CROP, dtype=np.uint8)
     classes[0] = SKY
     max_age: dict[str, int] = {}
@@ -82,7 +51,7 @@ def state_tables(state_names: list[str]) -> tuple[np.ndarray, np.ndarray]:
                     max_age[block] = max(max_age.get(block, 0), int(p[4:]))
     for i, name in enumerate(state_names):
         block, _, props = name.partition("[")
-        classes[i + 1] = INDEX.get(block, OTHER)
+        classes[i + 1] = INDEX.get(alias(block), OTHER)
         if block in CROPS:
             age = next((int(p[4:]) for p in props.rstrip("]").split(",") if p.startswith("age=")), 0)
             ripe[i + 1] = 1 if age == max_age[block] else 0
@@ -92,9 +61,9 @@ def state_tables(state_names: list[str]) -> tuple[np.ndarray, np.ndarray]:
 def entity_table(entities: list[str]) -> np.ndarray:
     """
     Reader class per entity in a mask_ids entities list: the mob's own class for MOB_KINDS, SKY for everything else
-    (items, drones, players, mobs the arenas never spawn), which the state stream never labeled as a block either
+    (items, drones, players), which the state stream never labeled as a block either
     """
-    return np.asarray([INDEX[name] if name in MOB_KINDS else SKY for name in entities], dtype=np.uint8)
+    return np.asarray([INDEX[name] if name in INDEX and name in MOB_SET else SKY for name in entities], dtype=np.uint16)
 
 
 def block(cin: int, cout: int) -> nn.Sequential:
@@ -140,7 +109,7 @@ def mask_lut(mask_ids: dict) -> np.ndarray:
     """Reader classes to the mod's mask ids, so code written for the mask stream can run on the reader's output"""
     id_of = {name: i + 1 for i, name in enumerate(mask_ids["blocks"])}
     base = mask_ids["entityBase"]
-    id_of.update({name: base + j for j, name in enumerate(mask_ids["entities"]) if name in MOB_KINDS})
+    id_of.update({name: base + j for j, name in enumerate(mask_ids["entities"]) if name in MOB_SET})
     # some solid block for "<other>", it still counts as something in the way
     other = id_of.get("minecraft:bedrock", 1)
     return np.asarray([0, other, *(id_of.get(name, other) for name in CLASSES[2:])], dtype=np.uint16)
@@ -149,13 +118,13 @@ def mask_lut(mask_ids: dict) -> np.ndarray:
 def class_lut(mask_ids: dict) -> np.ndarray:
     """The mod's mask ids to reader classes, so ground-truth frames go into the voxel memory like the reader's output"""
     base = mask_ids["entityBase"]
-    lut = np.full(base + len(mask_ids["entities"]), OTHER, dtype=np.uint8)
+    lut = np.full(base + len(mask_ids["entities"]), OTHER, dtype=np.uint16)
     lut[0] = SKY
     for i, name in enumerate(mask_ids["blocks"]):
-        lut[i + 1] = INDEX.get(name, OTHER)
+        lut[i + 1] = SKY if name in ("minecraft:air", "minecraft:cave_air", "minecraft:void_air") else INDEX.get(alias(name), OTHER)
     # mobs to their own classes, items and drones to nothing
     for j, name in enumerate(mask_ids["entities"]):
-        lut[base + j] = INDEX.get(name, SKY)
+        lut[base + j] = INDEX[name] if name in MOB_SET else SKY
     return lut
 
 
@@ -171,4 +140,4 @@ class Reader:
     @torch.no_grad()
     def read(self, rgb: np.ndarray, depth: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         logits, ripe = self.model(torch.from_numpy(rgb)[None].to(self.device), torch.from_numpy(depth)[None].to(self.device))
-        return logits[0].argmax(0).cpu().numpy().astype(np.uint8), torch.sigmoid(ripe[0, 0]).cpu().numpy()
+        return logits[0].argmax(0).cpu().numpy().astype(np.uint16), torch.sigmoid(ripe[0, 0]).cpu().numpy()

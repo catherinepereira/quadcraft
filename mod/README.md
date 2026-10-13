@@ -127,6 +127,7 @@ Rows top to bottom, `_` is an empty slot.
 | find_block | find the one block of a named kind among look-alikes and fly to it |
 | follow_mob | stay 2 to 5 blocks from a wandering villager |
 | dock_station | dock on a charging station placed in the arena, the drone's own home stays as it was |
+| studio | nothing to do, one block or mob named by `subject` with random neighbors and backdrop, and camera views of it for block reader frames |
 | fly_to | fly to the paste point, in your own world |
 | seek_block | find a block of a named kind in a region and fly to it, in your own world |
 | follow_player | follow you at 2 to 5 blocks until stopped |

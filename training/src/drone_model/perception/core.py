@@ -12,6 +12,7 @@ import numpy as np
 
 from .memory import AIR, Cell, Change, VoxelMemory, base_name
 from .mobs import MobTracker, mob_ids
+from .classes import alias
 from .reader import INDEX, OTHER, SKY, class_lut, mask_lut
 from .worldmap import WorldMap
 
@@ -110,7 +111,5 @@ class DroneCore:
             for cell, block in cells.items():
                 name = base_name(block)
                 self.scanned[cell] = name
-                votes = self.memory.cells.setdefault(cell, Cell()).votes
-                votes[:] = 0
-                votes[SKY if name == AIR else INDEX.get(name, OTHER)] = SCAN_VOTES
+                self.memory.cells.setdefault(cell, Cell()).reset(SKY if name == AIR else INDEX.get(alias(name), OTHER), SCAN_VOTES)
                 self.memory.touch(cell)

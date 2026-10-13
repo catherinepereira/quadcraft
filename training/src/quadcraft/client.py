@@ -147,6 +147,12 @@ class DroneClient:
         self.log.debug("step", action=action, reward=obs.reward, done=obs.done)
         return obs
 
+    def view(self, pose: list[float]) -> Observation:
+        """Puts the drone's camera at pose, [x, y, z, yaw, pitch], and returns the frame from there, for studio scenes"""
+        msg_id = next(self._ids)
+        self._send({"type": "view", "id": msg_id, "pose": pose})
+        return self._wait_obs(msg_id)
+
     def act(self, action: dict[str, Any]) -> None:
         self._send({"type": "act", "action": action})
 

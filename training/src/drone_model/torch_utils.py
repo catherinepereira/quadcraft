@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TypeVar
@@ -22,6 +23,23 @@ def pick_device() -> torch.device:
 def autocast(device: torch.device) -> torch.autocast:
     """bfloat16 on the GPU, full precision on the CPU"""
     return torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda")
+
+
+class Throttle:
+    """Sleeps after each piece of GPU work so the GPU is busy only share of the time, for training while the machine is in use"""
+
+    def __init__(self, share: float = 1.0) -> None:
+        self.share = share
+        self.last = time.perf_counter()
+
+    def __call__(self) -> None:
+        if self.share >= 1.0:
+            return
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        busy = time.perf_counter() - self.last
+        time.sleep(busy * (1.0 - self.share) / self.share)
+        self.last = time.perf_counter()
 
 
 def load_weights(model: torch.nn.Module, path: Path, device: torch.device) -> dict[str, Any]:

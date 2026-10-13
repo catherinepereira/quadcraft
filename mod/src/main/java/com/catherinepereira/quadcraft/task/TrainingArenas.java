@@ -62,7 +62,7 @@ public final class TrainingArenas {
 	public static final double KEY_SPAWN_DIST = 5.0;
 	public static final double CLEARANCE = 2.0;
 	// skip block entity side effects so clearing a filled chest doesn't spill its items
-	private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
+	static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
 	private static final List<Item> TRANSFER_ITEMS = List.of(
 		Items.COBBLESTONE, Items.OAK_LOG, Items.IRON_INGOT, Items.WHEAT, Items.REDSTONE, Items.COAL, Items.BRICK, Items.STRING
 	);
@@ -71,7 +71,7 @@ public final class TrainingArenas {
 	private static final List<EntityType<? extends Mob>> PASSIVE_MOBS = List.of(EntityTypes.COW, EntityTypes.PIG, EntityTypes.SHEEP, EntityTypes.CHICKEN);
 	private static final int PASSIVE_COUNT = 3;
 	// marks the mobs an arena spawned, the next arena on the spot removes them
-	private static final String ARENA_TAG = "quadcraft_arena";
+	static final String ARENA_TAG = "quadcraft_arena";
 	// find_block's target and look-alikes, kinds the block reader knows and the arena's terrain never makes
 	private static final List<Block> FIND_BLOCKS = List.of(
 		Blocks.BRICKS, Blocks.WOOL.pick(DyeColor.BLUE), Blocks.WOOL.pick(DyeColor.RED), Blocks.COAL_ORE, Blocks.SANDSTONE, Blocks.TERRACOTTA, Blocks.COBBLESTONE, Blocks.SPRUCE_PLANKS
@@ -113,14 +113,22 @@ public final class TrainingArenas {
 			existing.add(drone);
 			int size = Math.clamp(req.size(), 3, BuildJob.MAX_SIZE);
 			// two or three sites of size blocks across have to fit side by side
-			radius = Math.max(radius, isStructure(kind) ? Math.max(req.radius(), 2 * size + 8) : req.radius());
+			radius = Math.max(radius, isStructure(kind) ? Math.max(req.radius(), 2 * size + 8) : kind == TaskKind.STUDIO ? Studio.RADIUS : req.radius());
 		}
 		// every drone's sites take about the room of an arena of their own
 		radius = Math.clamp((int) Math.round(radius * Math.sqrt(reqs.size())), 4, 48);
 		int[] site = clearSite(level, existing, first.hasOrigin() ? first.originX() : player.getBlockX(), first.hasOrigin() ? first.originZ() : player.getBlockZ(), radius);
 		int ox = site[0];
 		int oz = site[1];
-		int floorY = findFloor(level, ox, oz);
+		// a previous arena on the same spot keeps its floor, the search is for the first one
+		Integer knownFloor = null;
+		for (DroneEntity drone : existing) {
+			ArenaRecord previous = drone == null ? null : Arena.record(drone);
+			if (previous != null && previous.origin.getX() == ox && previous.origin.getZ() == oz) {
+				knownFloor = previous.origin.getY();
+			}
+		}
+		int floorY = knownFloor != null ? knownFloor : findFloor(level, ox, oz);
 		BlockPos origin = new BlockPos(ox, floorY, oz);
 		Random rng = new Random(first.seed());
 
@@ -146,6 +154,9 @@ public final class TrainingArenas {
 		List<int[]> trees = terrain.kind.equals("rough") ? plantTrees(level, rng, terrain, ox, oz, radius, keyPoints, obstacles) : List.of();
 		List<int[]> stalactites = terrain.isCave() ? hangStalactites(level, rng, terrain, ox, oz, radius, keyPoints, obstacles) : List.of();
 		for (Member m : members) {
+			if (m.record.kind == TaskKind.STUDIO) {
+				Studio.addViews(level, m.rng, m.record, terrain);
+			}
 			m.record.obstacles = obstacles;
 			m.record.trees = trees;
 			m.record.stalactites = stalactites;
@@ -363,6 +374,7 @@ public final class TrainingArenas {
 				keyPoints.add(Vec3.atCenterOf(cell));
 				record.job = GotoJob.follow(villager, GotoJob.FOLLOW_TICKS);
 			}
+			case STUDIO -> Studio.build(level, rng, record, keyPoints, terrain, req.subject());
 			case MINE_DEPOSIT -> {
 				int depth = Math.max(3, size / 2 + 1);
 				BlockPos min = site(level, rng, record, keyPoints, terrain, size, size, Blocks.STONE.defaultBlockState(), 0.0).above();
@@ -581,7 +593,7 @@ public final class TrainingArenas {
 	 * A width x length footprint inside the arena, at least minDistFromKeys from the key points so far, levelled to the
 	 * highest ground under it with a layer of base. Returns its min corner at base height
 	 */
-	private static BlockPos site(
+	static BlockPos site(
 		ServerLevel level, Random rng, ArenaRecord record, List<Vec3> keyPoints, Terrain terrain, int width, int length, BlockState base, double minDistFromKeys
 	) {
 		int reach = record.radius - Math.max(width, length) - 2;
@@ -691,7 +703,7 @@ public final class TrainingArenas {
 	}
 
 	/** A random cell yAboveGround blocks over the local ground, at least minDistFromKeys from every key point */
-	private static BlockPos freeCell(Random rng, ArenaRecord record, List<Vec3> keyPoints, Terrain terrain, int yAboveGround, double minDistFromKeys) {
+	static BlockPos freeCell(Random rng, ArenaRecord record, List<Vec3> keyPoints, Terrain terrain, int yAboveGround, double minDistFromKeys) {
 		int half = record.radius - 1;
 		BlockPos cell = null;
 		double best = -1;
@@ -757,16 +769,27 @@ public final class TrainingArenas {
 		return Math.hypot(a.x - b.x, a.z - b.z);
 	}
 
+	/**
+	 * A previous build's floor, the lowest light gray concrete near the top of a few columns around x, z, otherwise the
+	 * natural surface. Several columns and the lowest one, since a task can cover one column's floor or set the same
+	 * concrete above it
+	 */
 	private static int findFloor(ServerLevel level, int x, int z) {
-		// a previous build leaves light gray concrete as the floor, otherwise use the natural surface
-		int top = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1;
 		BlockState floorBlock = Blocks.CONCRETE.pick(DyeColor.LIGHT_GRAY).defaultBlockState();
-		for (int y = top; y > top - HEIGHT - 2 && y > level.getMinY(); y--) {
-			if (level.getBlockState(new BlockPos(x, y, z)).equals(floorBlock)) {
-				return y;
+		int floor = Integer.MAX_VALUE;
+		level.getChunk(x >> 4, z >> 4);
+		int surface = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1;
+		for (int[] d : new int[][] {{0, 0}, {3, 3}, {-3, 3}, {3, -3}, {-3, -3}}) {
+			// an unloaded chunk's heightmap reads as the bottom of the world
+			level.getChunk((x + d[0]) >> 4, (z + d[1]) >> 4);
+			int top = level.getHeight(Heightmap.Types.WORLD_SURFACE, x + d[0], z + d[1]) - 1;
+			for (int y = top; y > top - HEIGHT - 2 && y > level.getMinY(); y--) {
+				if (y < floor && level.getBlockState(new BlockPos(x + d[0], y, z + d[1])).equals(floorBlock)) {
+					floor = y;
+				}
 			}
 		}
-		return top;
+		return floor != Integer.MAX_VALUE ? floor : surface;
 	}
 
 	private static void build(ServerLevel level, int ox, int floorY, int oz, int radius, int clearRadius) {

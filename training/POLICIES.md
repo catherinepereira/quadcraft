@@ -84,7 +84,7 @@ Notes:
 
 ## Perception models
 
-The block reader (`perception/reader.py`), the first stage of the perception core, is trained separately because it learns from the mod's label streams, not from a teacher's actions. `scripts\collect_reader.ps1` records frames with the `state` and `mask` streams through `collect.demos`, and `train.reader` learns per-pixel block classes from the state stream and mob classes from the mask stream. `--init` starts from an older reader, classes it didn't have start fresh.
+The block reader (`perception/reader.py`), the first stage of the perception core, is trained separately because it learns from the mod's label streams, not from a teacher's actions. `collect.studio` captures studio frames of every block and mob, labeled from the `state` and `mask` streams, and `train.reader` learns per-pixel block classes from the state stream and mob classes from the mask stream. `--init` starts from an older reader, classes it didn't have start fresh.
 
 ## How each policy was trained
 

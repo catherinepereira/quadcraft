@@ -112,8 +112,8 @@ for sample in iter_transitions(episodes):
 
 `DroneCore` (`perception/core.py`) is everything the drone knows about the world:
 
-- The block reader (`perception/reader.py`), a small U-Net that labels each pixel of the camera image and depth as one of about 40 classes (the build palette, the arena bases and floors, terrain, ore, chests, farmland, water, crops, and nine kinds of mob) and says whether a crop is ripe. Without a reader the core reads the mod's mask stream, which is ground truth, for collecting frames the reader can't label yet.
-- The voxel memory (`perception/memory.py`): the labels are back-projected through depth into cells, each cell keeps class and ripeness votes, the class with the most votes is what the drone believes is there, and break and place events update it at once. Planners ask it for a box's blocks, for every cell of a block kind (`cells_of`), or whether a cell is solid. Every update reports the cells that changed, which the dashboard's Drone memory panel shows.
+- The block reader (`perception/reader.py`), a small U-Net that labels each pixel of the camera image and depth as one of 1303 classes and says whether a crop is ripe. The classes are every block a camera can show and every kind of mob, from the game's registry (`perception/classes.json`, built by `perception/classes.py`). Blocks that look exactly like another, such as infested stone or waxed copper, are read as that block. Without a reader the core reads the mod's mask stream, which is ground truth.
+- The voxel memory (`perception/memory.py`): the labels are back-projected through depth into cells, each cell keeps class and ripeness votes, the class with the most votes is what the drone believes is there, and break and place events update it at once. Planners ask it for a box's blocks, for every cell of a block kind (`cells_of`), or whether a cell is solid, which comes from the game's collision shapes. Every update reports the cells that changed, which the dashboard's Drone memory panel shows.
 - The world map (`perception/worldmap.py`): the free space to fly through. A hit below the camera raises its column's known floor, a hit above lowers the known ceiling, a ray that crosses a cell shows it empty, and another drone seen near the flying height blocks its column for 15 frames. A climb that stalls marks a ceiling over the drone.
 - The mob tracker (`perception/mobs.py`): mob pixels back-projected through depth and grouped into mobs, one kind at a time. Hits in cells the memory has as solid are left out first, the reader's mob outline spilling onto the ground or a misread block. Each mob keeps its identity from frame to frame and the kind it was read as most, and goes once the camera looks at its spot and sees past it or reads a block there, or the memory comes to show its cells solid.
 - Scan perception: when a job carries the server's scan of its boxes, the core reads them into the memory as certain reads, and on a scan hunt it takes the region's mobs from the server.
@@ -121,13 +121,15 @@ for sample in iter_transitions(episodes):
 The brain keeps one core per drone for as long as it flies the drone, so a job starts out knowing everything earlier jobs saw. Training arenas and evaluations make a fresh core for each episode, every arena is a new world.
 
 ```powershell
-powershell -File scripts\collect_reader.ps1                                 # frames with the state stream across tasks and terrains
-powershell -File scripts\collect_reader.ps1 -Set mobs                       # hunt and patrol arenas, flown with the mod's mask
-.venv\Scripts\python -m drone_model.train.reader --init checkpoints\reader.pt   # checkpoints/reader.pt
+.venv\Scripts\python -m drone_model.collect.studio                          # studio frames of every block and mob, data/studio
+.venv\Scripts\python -m drone_model.train.reader --init checkpoints\reader.pt   # checkpoints/reader.pt, --gpu-share 0.4 keeps the GPU 60% idle for a game
 .venv\Scripts\python -m drone_model.evaluate.reader --episodes 10          # a core with the reader reads reference builds, scored cell by cell
+.venv\Scripts\python -m drone_model.evaluate.embeddings --checkpoint checkpoints\reader.pt --dest ..\..\quadcraft-embeddings\public\data
 ```
 
-The reader learns blocks from the mod's `state` stream and mobs from the `mask` stream's entity ids, and needs neither to run. Its frames are cached in `data/cache/`, apart from the recordings.
+The last command exports region embeddings for the explorer in `Developer/quadcraft-embeddings`: the decoder features that feed the class head, averaged over each block or mob region in a frame, with a crop of it, and laid out with UMAP in 2D and 3D.
+
+The reader trains on studio frames. For every block and mob the mod stages a small scene, the subject with random neighbors, ground, walls, light, and time of day, and picks camera poses around it at random angles and distances. The collector captures a frame from each pose and labels it from the mod's `state` stream for blocks and the `mask` stream's entity ids for mobs. Every block gets the same number of views and every mob four times as many. It writes training arrays straight to shards in `data/studio`, each tagged with the class list it was labeled for, and a stopped run picks up at the first unfinished shard. The reader needs neither stream to run. With the game running, `python -m drone_model.perception.classes` rebuilds the class list after a game update.
 
 ## Planners
 

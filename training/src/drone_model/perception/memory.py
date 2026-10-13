@@ -1,7 +1,7 @@
 """
 The drone's working memory: a voxel map of what the block reader has seen.
-Each cell keeps votes per block class and ripe votes, the class with the most votes is what the drone believes is
-there. Every update returns the cells whose belief changed, so the dashboard can show how the memory evolves
+Each cell keeps votes for the classes read there and ripe votes, the class with the most votes is what the drone
+believes is there. Every update returns the cells whose belief changed, so the dashboard can show how the memory evolves
 """
 
 from __future__ import annotations
@@ -11,15 +11,11 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .worldmap import backproject
-from .reader import CLASSES, CROPS, MOBS, OTHER, SKY
+from .reader import CLASSES, CROPS, INDEX, MOBS, OTHER, SKY, SOLID
 
 AIR = "minecraft:air"
-# blocks a mob can stand in or swim through, and the reader's catch-all, which is too vague to call solid
-NOT_SOLID = {AIR, "<other>", "minecraft:water", "quadcraft:marker", *CROPS}
 # a cell needs this many votes before the drone believes anything is there
 MIN_VOTES = 4
-# votes a cell keeps when its block is broken, so later frames win quickly
-FORGET = 0
 # a hit counts fully up to this many blocks away and less beyond, far views at grazing angles misread more
 NEAR = 5.0
 FAR_WEIGHT = 0.25
@@ -32,16 +28,33 @@ def base_name(label: str) -> str:
 
 @dataclass
 class Cell:
-    votes: np.ndarray = field(default_factory=lambda: np.zeros(len(CLASSES), dtype=np.float32))
+    # class index to votes, only for the classes read here, a handful of the reader's 1303
+    votes: dict[int, float] = field(default_factory=dict)
     ripe: int = 0
     unripe: int = 0
     seen: int = -1
 
+    def total(self) -> float:
+        return sum(self.votes.values())
+
+    def add(self, cls: int, weight: float) -> None:
+        self.votes[cls] = self.votes.get(cls, 0.0) + weight
+
+    def reset(self, cls: int | None = None, weight: float = 0.0) -> None:
+        """Forgets every vote, then gives cls weight votes"""
+        self.votes.clear()
+        if cls is not None:
+            self.votes[cls] = weight
+
+    def share(self, cls: int) -> float:
+        total = self.total()
+        return 0.0 if total == 0 else self.votes.get(cls, 0.0) / total
+
     def belief(self) -> str:
         """The block the drone thinks is here, air until enough votes agree on something"""
-        if self.votes.sum() < MIN_VOTES:
+        if self.total() < MIN_VOTES:
             return AIR
-        best = int(self.votes.argmax())
+        best = max(self.votes, key=self.votes.get)
         return AIR if best == SKY else CLASSES[best] if best != OTHER else "<other>"
 
     @property
@@ -98,9 +111,9 @@ class VoxelMemory:
         return sorted(self.by_block.get(block, ()))
 
     def solid(self, key: tuple[int, int, int]) -> bool:
-        """Whether the drone believes a block that nothing can stand inside fills the cell"""
+        """Whether the drone believes a block that nothing can stand inside fills the cell, the reader's catch-all is too vague to count"""
         cell = self.cells.get(key)
-        return cell is not None and cell.belief() not in NOT_SOLID
+        return cell is not None and cell.belief() in SOLID
 
     def observe(self, state: dict, depth: np.ndarray, classes: np.ndarray, ripe: np.ndarray | None, depth_max: float = 64.0) -> list[Change]:
         """Adds one frame of reader output, returns the cells whose belief changed. ripe is None when the frame has no ripeness"""
@@ -124,12 +137,12 @@ class VoxelMemory:
         for key, n in zip(*np.unique(crossed, axis=0, return_counts=True)):
             key = tuple(int(v) for v in key)
             if key in cleared:
-                self.cells[key].votes[SKY] += int(n)
-        crop_ids = [CLASSES.index(c) for c in ("minecraft:wheat", "minecraft:carrots", "minecraft:potatoes", "minecraft:beetroots")]
-        for (x, y, z), c, r, w in zip(inside, cls, rp, weight):
+                self.cells[key].add(SKY, int(n))
+        crop_ids = {INDEX[c] for c in CROPS}
+        for (x, y, z), c, r, w in zip(inside, cls.tolist(), rp, weight.tolist()):
             key = (int(x), int(y), int(z))
             cell = self.cells.setdefault(key, Cell())
-            cell.votes[c] += w
+            cell.add(c, w)
             cell.seen = self.step
             if c in crop_ids and not np.isnan(r):
                 if r > 0.5:
@@ -149,11 +162,10 @@ class VoxelMemory:
             self.touched.add(key)
             before = self.label(key)
             cell = self.cells.setdefault(key, Cell())
-            cell.votes[:] = FORGET
+            cell.reset()
             cell.ripe = cell.unripe = 0
             if kind == "place":
-                idx = CLASSES.index(event["block"]) if event["block"] in CLASSES else OTHER
-                cell.votes[idx] = MIN_VOTES
+                cell.reset(INDEX.get(event["block"], OTHER), MIN_VOTES)
             changes.append(Change(key, before, self.label(key), "broke" if kind == "break" else "placed"))
         return changes
 

@@ -18,7 +18,7 @@ from quadcraft import DroneEnv
 from .. import labels
 from ..scripted.jobs import episode_expert
 from ..paths import CHECKPOINTS, DATA, SCHEMATICS
-from ..perception.reader import Reader
+from ..perception.reader import FRAME, Reader
 
 # arenas whose demos come from the task's own expert even though they hand the drone a job
 ARENA_EXPERT_TASKS = ("replicate_build", "harvest_crops")
@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument("--noise", type=float, default=0.3)
     parser.add_argument("--obstacles", type=int, default=8)
     parser.add_argument("--terrain", choices=["flat", "rough", "cave"], default="flat")
-    parser.add_argument("--task", default="navigate_to")
+    parser.add_argument("--task", default="goto_point")
     parser.add_argument("--perception", choices=["reader", "mask"], default="reader", help="what experts see with, mask is the mod's ground truth")
     parser.add_argument("--reader", type=Path, default=CHECKPOINTS / "reader.pt")
     parser.add_argument("--data", type=Path, default=DATA)
@@ -49,7 +49,7 @@ def main() -> None:
         options["maxSteps"] = args.max_steps
     if args.prey:
         options["prey"] = args.prey
-    env = DroneEnv(task=args.task, tools=True, streams=tuple(args.streams.split(",")), record=True, action_pause_ms=0, task_options=options)
+    env = DroneEnv(task=args.task, tools=True, streams=tuple(args.streams.split(",")), record=True, action_pause_ms=0, width=FRAME[1], height=FRAME[0], task_options=options)
     successes = 0
     try:
         for i in range(args.episodes):

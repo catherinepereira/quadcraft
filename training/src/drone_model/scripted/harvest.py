@@ -1,7 +1,6 @@
 """
-Scripted experts for the training arenas, used to generate demos and as a reference in evaluation.
-They know only the drone's own pose and what its camera has shown, through the drone's perception core
-(perception.core): they explore until the block they need is in its memory, then go to it
+The harvest planner's field work: survey the field, break ripe crops, replant their plots, and sweep for bare farmland.
+It knows only the drone's own pose and what its camera has shown, through the drone's perception core
 """
 
 from __future__ import annotations
@@ -12,91 +11,7 @@ from collections import Counter
 import numpy as np
 
 from ..perception.reader import CLASSES, SKY
-from .base import (
-    AIM_TOLERANCE, SURVEY_LIMIT, TURN_GAIN, Planner, aim_angle, aim_errors, carried, center, place_viewpoint, tool_action,
-)
-
-
-class NavigateExpert(Planner):
-    def decide(self, state: dict) -> dict:
-        marker = self.nearest(state, self.known("quadcraft:marker"))
-        if marker is None:
-            return self.explore(state)
-        move, _ = self.fly(state, center(marker), standoff=0.0, column=(marker[0], marker[2]))
-        return tool_action(move)
-
-
-class DigExpert(Planner):
-    def decide(self, state: dict) -> dict:
-        ore = self.nearest(state, self.known("minecraft:coal_ore"))
-        if ore is None:
-            return self.explore(state)
-        return self.work_on(state, ore, "break", standoff=2.5, hover=0.9, expect="minecraft:coal_ore")
-
-
-class ContainerMixin:
-    def deliver(self, state: dict, chest, items: set[str] | None) -> dict:
-        """Open the chest, then move every matching stack from the drone into it"""
-        container = state.get("container")
-        if container and tuple(container["pos"]) == tuple(chest):
-            slots = carried(state, items)
-            return tool_action([0, 0, 0, 0, 0], transfer=(1, slots[0])) if slots else tool_action([0, 0, 0, 0, 0], "close")
-        if container:
-            return tool_action([0, 0, 0, 0, 0], "close")
-        return self.work_on(state, chest, "open", standoff=2.0, hover=0.8, expect="minecraft:chest")
-
-
-class MineDeliverExpert(Planner, ContainerMixin):
-    def decide(self, state: dict) -> dict:
-        ore = self.nearest(state, self.known("minecraft:coal_ore"))
-        if ore is not None:
-            if state.get("container"):
-                return tool_action([0, 0, 0, 0, 0], "close")
-            return self.work_on(state, ore, "break", standoff=2.5, hover=0.9, expect="minecraft:coal_ore")
-        chest = self.nearest(state, self.known("minecraft:chest"))
-        coal = carried(state, {"minecraft:coal"})
-        # drop off what's in hand, then keep exploring in case more ore is out of sight
-        if chest is not None and (coal or state.get("container")):
-            return self.deliver(state, chest, {"minecraft:coal"})
-        return self.explore(state)
-
-
-class ChestTransferExpert(Planner, ContainerMixin):
-    """Opens chests to learn which one holds the items, empties it, and fills the other"""
-
-    def __init__(self, mask_ids: dict, depth_max: float = 64.0, reader=None, core=None) -> None:
-        super().__init__(mask_ids, depth_max, reader, core=core)
-        self.roles: dict[tuple, str] = {}
-
-    def decide(self, state: dict) -> dict:
-        container = state.get("container")
-        if container:
-            chest = tuple(container["pos"])
-            full = [i for i, (_, count) in enumerate(container["slots"]) if count > 0]
-            role = self.roles.setdefault(chest, "source" if full else "target")
-            if role == "source":
-                return tool_action([0, 0, 0, 0, 0], transfer=(2, full[0])) if full else tool_action([0, 0, 0, 0, 0], "close")
-            if carried(state):
-                return self.deliver(state, chest, None)
-            return tool_action([0, 0, 0, 0, 0], "close")
-        chests = self.known("minecraft:chest")
-        target = next((c for c in chests if self.roles.get(c) == "target"), None)
-        if carried(state) and target is not None:
-            return self.deliver(state, target, None)
-        unknown = self.nearest(state, [c for c in chests if c not in self.roles])
-        if unknown is not None:
-            return self.work_on(state, unknown, "open", standoff=2.0, hover=0.8, expect="minecraft:chest")
-        return self.explore(state)
-
-
-class PlaceExpert(Planner):
-    def decide(self, state: dict) -> dict:
-        pad = self.nearest(state, self.known("minecraft:lime_concrete"))
-        if pad is None:
-            return self.explore(state)
-        # aim at the middle of the pad's top face so the placed block lands on top of it
-        point = (pad[0] + 0.5, pad[1] + 1.02, pad[2] + 0.5)
-        return self.work_on(state, pad, "place", standoff=1.8, hover=2.5, point=point, expect="minecraft:lime_concrete", place="minecraft:oak_planks")
+from .base import AIM_TOLERANCE, SURVEY_LIMIT, TURN_GAIN, Planner, aim_angle, aim_errors, carried, place_viewpoint
 
 
 FIELD_VIEW_HEIGHT = 5.0
@@ -257,16 +172,3 @@ class HarvestExpert(Planner):
             move = [0.0, 0.0, float(np.clip(view[1] - state["pos"][1], -1, 1)), np.clip(yaw_error * TURN_GAIN, -1, 1), np.clip(pitch_error * TURN_GAIN, -1, 1)]
             self.dwell_on(state, (cx, y0 + 1, cz))
         return self.view(state, move, view, (cx, y0 + 1, cz))
-
-
-EXPERTS = {
-    "navigate_to": NavigateExpert,
-    "dig_block": DigExpert,
-    "place_block": PlaceExpert,
-    "chest_transfer": ChestTransferExpert,
-    "mine_and_deliver": MineDeliverExpert,
-}
-
-
-def make_expert(task: str, mask_ids: dict, depth_max: float = 64.0, reader=None, core=None) -> Planner:
-    return EXPERTS[task](mask_ids, depth_max, reader, core=core)

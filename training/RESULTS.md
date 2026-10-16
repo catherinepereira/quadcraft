@@ -104,7 +104,7 @@ The patrol planner picks the target mob through reader v3, and the skill flies, 
 | Skill, round 7, backing checked against the geofence | 40% | 1 | 4 | 1 |
 | Skill, retrained with the turn penalty, tracker fixed, turn easing | 90% | 0 | 1 | 0 |
 
-The scripted run used the first 6 of the same seeds. In round 5 the planner backed away from a mob closer than its 4-block standoff. A provoked mob follows the drone, so the skill backed out through the wall behind it, which the camera faces away from. From round 6 the planner climbs 2 blocks over a close mob instead, and the round 5 hunt episodes were set aside in `data/archive/skill-hunt-backoff`. In 3 of round 7's 4 timeouts one mob was left. A later exit traced to the planner's unstick move, which reversed blind for 8 steps while the drone hovered a block from a wall. Unsticking and backing off a close goal now reverse only while the spot 1.5 blocks behind is inside the geofence. Mobs move differently on every run, so 10 hunts swing by a success or two.
+The scripted run used the first 6 of the same seeds. In round 5 the planner backed away from a mob closer than its 4-block standoff. A provoked mob follows the drone, so the skill backed out through the wall behind it, which the camera faces away from. From round 6 the planner climbs 2 blocks over a close mob instead, and the round 5 hunt episodes were dropped. In 3 of round 7's 4 timeouts one mob was left. A later exit traced to the planner's unstick move, which reversed blind for 8 steps while the drone hovered a block from a wall. Unsticking and backing off a close goal now reverse only while the spot 1.5 blocks behind is inside the geofence. Mobs move differently on every run, so 10 hunts swing by a success or two.
 
 ### Scan against vision perception, scripted flight, flat, 2026-10-05
 
@@ -161,6 +161,65 @@ The planner picks the goals, the skill flies, aims, and fires. Round 4 trained o
 Two changes took the skill from 20% to 70%. The scripted controller now keeps the camera on the aim point while it strafes the last 1.5 blocks to a viewpoint. It used to look at the viewpoint until it arrived, which gave the skill contradictory labels. The skill also no longer gets its previous action as an input, which let it copy its own last move.
 
 ## Block reader
+
+### Reader v10, 2026-10-15
+
+A ConvNeXt-Tiny encoder pretrained on ImageNet at 320x240, 60000 steps at batch 8. It trains on 227000 rendered frames of the 1134 blocks with models (`collect.render`, 50 scenes each) and 17800 game frames of mobs, blocks with their own renderers, and 2 scenes of every other block (`collect.studio`). Scored on a held-out game shard, mean IoU 0.362 (v9 0.239 on its own 160x120 shard).
+
+| Classes | mean IoU |
+| --- | --- |
+| 1134 blocks trained mostly on rendered frames | 0.378 |
+| 79 blocks only in game frames | 0.315 |
+| 88 mobs | 0.204 |
+
+How often v10 reads the scene's subject right on game frames, by its size in the 320x240 frame (4 times the pixels of v9's 160x120 for the same view):
+
+| Subject pixels | rendered-trained blocks | game-only blocks | mobs |
+| --- | --- | --- | --- |
+| under 100 | 1% | 0% | 0% |
+| 100 to 300 | 15% | 28% | 41% |
+| 300 to 1000 | 39% | 55% | 55% |
+| 1000 to 3000 | 64% | 81% | 86% |
+| over 3000 | 72% | 86% | 94% |
+| all | 59.1% | 71.8% | 80.1% |
+
+In the game, promoted to `reader.pt`, flat unless noted:
+
+| Check | v10 | Before |
+| --- | --- | --- |
+| `evaluate.reader`, 10 reference builds | cell accuracy 99.3%, block recall 93.3%, 9 of 10 exact | |
+| find_block, rough, learned policies | 5 of 6 | 10 of 10 with reader v4 |
+| hunt_mobs, prey the arena picks, learned policies, 3000 steps | 0 of 4, 64% of prey killed | every mob, 6000 steps: 0 of 6, 45% killed with v5b |
+
+v9 read 38.8% of held-out block subjects and 51.7% of mobs. Blocks learned mostly from rendered frames read about 13 points worse than blocks learned from game frames, the gap between the renderer and the game. A classifier told game and rendered frames apart at 0.999 AUC, mostly from the sky and the scenery around the subject.
+
+### Reader v8 and v9, 2026-10-13
+
+Both train on studio frames, one block or mob per scene with random backdrops, neighbors, light, and camera angles, 1,303 classes. v8 is the U-Net from v7's weights, 30000 steps. v9 swaps its encoder for a ResNet-34 pretrained on ImageNet, with depth as a fourth input channel, 50000 steps from the ImageNet weights. Scored on the same held-out shard.
+
+| | v8 | v9 |
+| --- | --- | --- |
+| mean IoU, all classes | 0.175 | 0.239 |
+| mean IoU, blocks | 0.177 | 0.244 |
+| mean IoU, mobs | 0.139 | 0.165 |
+| mean IoU, the 43 classes v5b had | 0.406 | 0.451 |
+| subject regions read right, blocks | 33.7% | 36.3% |
+| subject regions read right, mobs | 55.1% | 52.4% |
+
+Regions read right are the embedding export's sample, 12 regions per block class and 40 per mob class, labeled by the majority of their pixels. The 43 old classes read worse than v5b did (0.853) because v5b was scored on its own episodes, where stone, dirt, and sky fill most of the frame.
+
+How often v9 reads the scene's subject right, by its size in the 160x120 frame:
+
+| Subject pixels | blocks, held out | blocks, training | mobs, held out | mobs, training |
+| --- | --- | --- | --- | --- |
+| under 100 | 6% | 16% | 8% | 32% |
+| 100 to 300 | 15% | 31% | 22% | 40% |
+| 300 to 1000 | 37% | 57% | 44% | 76% |
+| 1000 to 3000 | 57% | 83% | 77% | 94% |
+| over 3000 | 66% | 95% | 98% | 96% |
+| all | 38.8% | 58.4% | 51.7% | 67.4% |
+
+Small subjects read worst on both sides. The gap between held-out and training scenes of the same classes is about 20 points, each block class has 6 scenes and each mob class 24.
 
 ### Reader v5 and v5b, 2026-10-09
 

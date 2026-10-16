@@ -6,17 +6,9 @@ import com.catherinepereira.quadcraft.entity.DroneTier;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.Container;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import org.jspecify.annotations.Nullable;
 
@@ -29,16 +21,8 @@ public final class ArenaRecord {
 	public List<int[]> trees = List.of();
 	public List<int[]> stalactites = List.of();
 	public String terrain = "flat";
-	public @Nullable BlockPos marker;
 	public final List<BlockPos> targets = new ArrayList<>();
 	public final List<BlockPos> distractors = new ArrayList<>();
-	public @Nullable BlockPos goal;
-	public @Nullable Block goalBlock;
-	public @Nullable BlockPos sourceChest;
-	public @Nullable BlockPos targetChest;
-	public final Map<Item, Integer> required = new LinkedHashMap<>();
-	public int requiredCount;
-	public int wrongPlacements;
 	public @Nullable Blueprint blueprint;
 	public @Nullable BlockPos referenceBase;
 	public @Nullable BlockPos buildBase;
@@ -63,9 +47,6 @@ public final class ArenaRecord {
 
 	/**
 	 * Task progress counters sent with every tool sync.
-	 * dig_block: remaining targets. place_block: placed (0 or 1), wrong placements.
-	 * chest_transfer: items in the target chest, items required, required items the drone carries.
-	 * mine_and_deliver: remaining targets, coal delivered, coal required, coal the drone carries.
 	 * replicate_build, copy_region, build_schematic: destination cells that match, target blocks, destination blocks that don't belong.
 	 * mine_region: blocks of the kind left in the region, how many there were at the start.
 	 * harvest_crops, harvest_region: crops ripe at the start still standing, ripe ones harvested, ripe at the start,
@@ -75,39 +56,10 @@ public final class ArenaRecord {
 	 */
 	public int[] metrics(ServerLevel level, DroneEntity drone) {
 		return switch (this.kind) {
-			case NAVIGATE_TO, STUDIO -> new int[0];
-			case DIG_BLOCK -> new int[] {this.remainingTargets(level)};
-			case PLACE_BLOCK -> new int[] {
-				this.goal != null && level.getBlockState(this.goal).is(this.goalBlock) ? 1 : 0, this.wrongPlacements
-			};
-			case CHEST_TRANSFER -> {
-				Container target = DroneContainers.resolve(level, this.targetChest);
-				int inTarget = 0;
-				int carried = 0;
-				int total = 0;
-				for (var entry : this.required.entrySet()) {
-					inTarget += Math.min(entry.getValue(), target == null ? 0 : target.countItem(entry.getKey()));
-					carried += drone.inventory.countItem(entry.getKey());
-					total += entry.getValue();
-				}
-				yield new int[] {inTarget, total, carried};
-			}
-			case MINE_AND_DELIVER -> {
-				Container chest = DroneContainers.resolve(level, this.targetChest);
-				yield new int[] {
-					this.remainingTargets(level),
-					chest == null ? 0 : chest.countItem(Items.COAL),
-					this.requiredCount,
-					drone.inventory.countItem(Items.COAL)
-				};
-			}
+			case STUDIO -> new int[0];
 			case REPLICATE_BUILD, COPY_REGION, BUILD_SCHEMATIC, MINE_REGION, HARVEST_CROPS, HARVEST_REGION, COPY_BUILD, SCHEMATIC_BUILD, MINE_DEPOSIT, GATHER_BUILD, RETURN_HOME, PATROL_AREA,
 				HUNT_MOBS, PATROL_REGION, GUARD_REGION, GOTO_POINT, FIND_BLOCK, FOLLOW_MOB, FLY_TO, SEEK_BLOCK, FOLLOW_PLAYER, DOCK_STATION -> this.job.score(level);
 		};
-	}
-
-	private int remainingTargets(ServerLevel level) {
-		return (int) this.targets.stream().filter(p -> level.getBlockState(p).is(Blocks.COAL_ORE)).count();
 	}
 
 	public JsonObject toJson() {
@@ -119,28 +71,9 @@ public final class ArenaRecord {
 		json.addProperty("terrain", this.terrain);
 		json.add("trees", rows(this.trees));
 		json.add("stalactites", rows(this.stalactites));
-		if (this.marker != null) {
-			json.add("marker", Json.pos(this.marker));
-		}
 		if (!this.targets.isEmpty()) {
 			json.add("targets", positions(this.targets));
 			json.add("distractors", positions(this.distractors));
-			json.addProperty("targetBlock", "minecraft:coal_ore");
-		}
-		if (this.goal != null) {
-			json.add("goal", Json.pos(this.goal));
-			json.addProperty("goalBlock", BuiltInRegistries.BLOCK.getKey(this.goalBlock).toString());
-		}
-		if (this.sourceChest != null) {
-			json.add("sourceChest", Json.pos(this.sourceChest));
-		}
-		if (this.targetChest != null) {
-			json.add("targetChest", Json.pos(this.targetChest));
-		}
-		if (!this.required.isEmpty()) {
-			JsonObject req = new JsonObject();
-			this.required.forEach((item, count) -> req.addProperty(BuiltInRegistries.ITEM.getKey(item).toString(), count));
-			json.add("required", req);
 		}
 		if (this.job != null) {
 			JsonObject job = this.job.toJson();
@@ -184,10 +117,6 @@ public final class ArenaRecord {
 				views.add(v);
 			}
 			json.add("views", views);
-		}
-		if (this.requiredCount > 0) {
-			json.addProperty("requiredCount", this.requiredCount);
-			json.addProperty("deliverItem", "minecraft:coal");
 		}
 		return json;
 	}

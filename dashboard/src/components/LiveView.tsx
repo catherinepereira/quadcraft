@@ -1,5 +1,5 @@
 import { useBridge } from "../stores/bridge";
-import { fixed, vec } from "../utils/format";
+import { fixed, shortId, vec } from "../utils/format";
 import { ArenaMap } from "./ArenaMap";
 import { ControlPanel } from "./ControlPanel";
 import { DronesPanel } from "./DronesPanel";
@@ -11,7 +11,7 @@ import { StreamView } from "./StreamView";
 import { Card, Pill, Row } from "./ui";
 
 export function LiveView() {
-  const { latest, maskIds, config, status, actions } = useBridge();
+  const { latest, maskIds, config, status, actions, arena } = useBridge();
   const depthMax = Number(config?.depthMax ?? 64);
   const state = latest?.state;
   const episode = latest?.episode ?? status?.episode ?? null;
@@ -95,14 +95,9 @@ export function LiveView() {
           <Row label="Yaw, pitch">
             {fixed(state?.yaw, 0)}°, {fixed(state?.pitch, 0)}°
           </Row>
-          <Row label="Looking at">
-            {state?.lookingAt
-              ? `${state.lookingAt.block.replace("minecraft:", "")} at ${fixed(state.lookingAt.dist, 1)}`
-              : "-"}
-          </Row>
           <Row label="Tick">{latest?.tick ?? "-"}</Row>
         </Card>
-        <ArenaMap state={state} />
+        <ArenaMap state={state} arena={arena} />
         <MemoryPanel />
         <Card
           title="Episode"
@@ -122,7 +117,7 @@ export function LiveView() {
         >
           {episode ? (
             <>
-              <Row label="Id">{episode.id.replace("navigate_to-", "")}</Row>
+              <Row label="Id">{shortId(episode.id)}</Row>
               <Row label="Step">{episode.step}</Row>
               <Row label="Distance">{fixed(episode.distance, 2)}</Row>
               <Row label="Total reward">{fixed(episode.totalReward, 2)}</Row>

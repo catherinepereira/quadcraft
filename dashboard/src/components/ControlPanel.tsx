@@ -5,11 +5,6 @@ import { Button, Card, Field, inputClass } from "./ui";
 
 const LOOK = 6;
 const TASKS = [
-  "navigate_to",
-  "dig_block",
-  "place_block",
-  "chest_transfer",
-  "mine_and_deliver",
   "replicate_build",
   "harvest_crops",
   "patrol_area",
@@ -65,7 +60,7 @@ export function ControlPanel() {
     latest,
   } = useBridge();
   const [droneName, setDroneName] = useState("");
-  const [task, setTask] = useState("navigate_to");
+  const [task, setTask] = useState("goto_point");
   const [terrain, setTerrain] = useState("flat");
   const [targets, setTargets] = useState(1);
   const tapped = useRef(new Set<string>());

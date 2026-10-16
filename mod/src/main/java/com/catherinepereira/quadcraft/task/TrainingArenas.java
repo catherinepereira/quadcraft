@@ -18,13 +18,11 @@ import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Unit;
-import net.minecraft.world.Container;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
@@ -38,7 +36,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.FarmlandBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -63,9 +60,6 @@ public final class TrainingArenas {
 	public static final double CLEARANCE = 2.0;
 	// skip block entity side effects so clearing a filled chest doesn't spill its items
 	static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
-	private static final List<Item> TRANSFER_ITEMS = List.of(
-		Items.COBBLESTONE, Items.OAK_LOG, Items.IRON_INGOT, Items.WHEAT, Items.REDSTONE, Items.COAL, Items.BRICK, Items.STRING
-	);
 	// a hunt's mobs, hostile and passive, the episode's prey picks which of them the drone hunts and which it leaves alone
 	private static final List<EntityType<? extends Mob>> HOSTILE_MOBS = List.of(EntityTypes.ZOMBIE, EntityTypes.HUSK, EntityTypes.SKELETON, EntityTypes.CREEPER);
 	private static final List<EntityType<? extends Mob>> PASSIVE_MOBS = List.of(EntityTypes.COW, EntityTypes.PIG, EntityTypes.SHEEP, EntityTypes.CHICKEN);
@@ -160,9 +154,6 @@ public final class TrainingArenas {
 			m.record.obstacles = obstacles;
 			m.record.trees = trees;
 			m.record.stalactites = stalactites;
-			if (m.record.marker != null) {
-				level.setBlock(m.record.marker, ModContent.MARKER.defaultBlockState(), FLAGS);
-			}
 		}
 		parkPlayer(level, player, ox, floorY, oz);
 		int edge = clearRadius + 2;
@@ -216,37 +207,6 @@ public final class TrainingArenas {
 		List<ItemStack> stock = null;
 
 		switch (kind) {
-			case NAVIGATE_TO -> {
-				BlockPos cell = randomInside(rng, ox, oz, radius - 1, 0);
-				int markerY = Math.min(terrain.ground(cell.getX(), cell.getZ()) + 1 + rng.nextInt(6), terrain.ceiling(cell.getX(), cell.getZ()) - 2);
-				record.marker = new BlockPos(cell.getX(), markerY, cell.getZ());
-				keyPoints.add(Vec3.atCenterOf(record.marker));
-			}
-			case DIG_BLOCK, MINE_AND_DELIVER -> {
-				placePedestals(level, rng, record, keyPoints, kind == TaskKind.DIG_BLOCK ? targets : Math.max(2, targets), terrain);
-				if (kind == TaskKind.MINE_AND_DELIVER) {
-					record.requiredCount = record.targets.size();
-					record.targetChest = freeCell(rng, record, keyPoints, terrain, 1, 4.0);
-					placeChest(level, record.targetChest, ox, oz);
-					keyPoints.add(Vec3.atCenterOf(record.targetChest));
-				}
-			}
-			case PLACE_BLOCK -> {
-				BlockPos pad = freeCell(rng, record, keyPoints, terrain, 0, 0.0);
-				level.setBlock(pad, Blocks.CONCRETE.pick(DyeColor.LIME).defaultBlockState(), FLAGS);
-				record.goal = pad.above();
-				record.goalBlock = Blocks.OAK_PLANKS;
-				keyPoints.add(Vec3.atCenterOf(record.goal));
-			}
-			case CHEST_TRANSFER -> {
-				record.sourceChest = freeCell(rng, record, keyPoints, terrain, 1, 0.0);
-				keyPoints.add(Vec3.atCenterOf(record.sourceChest));
-				record.targetChest = freeCell(rng, record, keyPoints, terrain, 1, 8.0);
-				keyPoints.add(Vec3.atCenterOf(record.targetChest));
-				placeChest(level, record.sourceChest, ox, oz);
-				placeChest(level, record.targetChest, ox, oz);
-				fillSource(level, rng, record);
-			}
 			case REPLICATE_BUILD -> {
 				record.blueprint = Blueprint.random(rng);
 				record.referenceBase = buildSite(level, rng, record, keyPoints, terrain, DyeColor.CYAN, 0.0);
@@ -495,9 +455,6 @@ public final class TrainingArenas {
 		drone.openContainer = null;
 		drone.breakingPos = null;
 		drone.breakProgress = 0;
-		if (kind == TaskKind.PLACE_BLOCK) {
-			drone.inventory.setItem(0, new ItemStack(Items.OAK_PLANKS, 16));
-		}
 		if (kind == TaskKind.HARVEST_CROPS) {
 			drone.inventory.setItem(0, new ItemStack(Items.WHEAT_SEEDS, 4));
 		}
@@ -571,22 +528,6 @@ public final class TrainingArenas {
 			}
 		}
 		return new BlockPos[] {new BlockPos(center.getX() - half, baseY, center.getZ() - half), new BlockPos(center.getX() + half, baseY, center.getZ() + half)};
-	}
-
-	// coal ore on stone pedestals 0 to 2 high, plus twice as many plain stone pedestals as distractors
-	private static void placePedestals(ServerLevel level, Random rng, ArenaRecord record, List<Vec3> keyPoints, int count, Terrain terrain) {
-		for (int i = 0; i < count * 3; i++) {
-			boolean target = i < count;
-			BlockPos base = freeCell(rng, record, keyPoints, terrain, 1, 3.0);
-			int height = rng.nextInt(3);
-			for (int h = 0; h < height; h++) {
-				level.setBlock(base.above(h), Blocks.STONE.defaultBlockState(), FLAGS);
-			}
-			BlockPos top = base.above(height);
-			level.setBlock(top, target ? Blocks.COAL_ORE.defaultBlockState() : Blocks.STONE.defaultBlockState(), FLAGS);
-			(target ? record.targets : record.distractors).add(top);
-			keyPoints.add(Vec3.atCenterOf(top));
-		}
 	}
 
 	/**
@@ -673,33 +614,6 @@ public final class TrainingArenas {
 		BlockState base = Blocks.CONCRETE.pick(color).defaultBlockState();
 		pad(level, terrain, center.getX() - 1, center.getZ() - 1, 3, 3, baseY, base, keyPoints);
 		return new BlockPos(center.getX(), baseY, center.getZ());
-	}
-
-	private static void placeChest(ServerLevel level, BlockPos pos, int ox, int oz) {
-		int dx = ox - pos.getX();
-		int dz = oz - pos.getZ();
-		Direction facing = Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? Direction.EAST : Direction.WEST) : (dz > 0 ? Direction.SOUTH : Direction.NORTH);
-		level.setBlock(pos, Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, facing), Block.UPDATE_ALL);
-	}
-
-	private static void fillSource(ServerLevel level, Random rng, ArenaRecord record) {
-		Container chest = DroneContainers.resolve(level, record.sourceChest);
-		if (chest == null) {
-			throw new IllegalStateException("source chest missing at " + record.sourceChest);
-		}
-		int stacks = 2 + rng.nextInt(4);
-		List<Integer> slots = new ArrayList<>();
-		for (int i = 0; i < chest.getContainerSize(); i++) {
-			slots.add(i);
-		}
-		java.util.Collections.shuffle(slots, rng);
-		for (int i = 0; i < stacks; i++) {
-			Item item = TRANSFER_ITEMS.get(rng.nextInt(TRANSFER_ITEMS.size()));
-			int count = 8 + rng.nextInt(57);
-			chest.setItem(slots.get(i), new ItemStack(item, count));
-			record.required.merge(item, count, Integer::sum);
-		}
-		chest.setChanged();
 	}
 
 	/** A random cell yAboveGround blocks over the local ground, at least minDistFromKeys from every key point */

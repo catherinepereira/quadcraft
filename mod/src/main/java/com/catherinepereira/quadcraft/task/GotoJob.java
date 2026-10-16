@@ -35,19 +35,22 @@ public final class GotoJob implements DroneJob {
 	private final BlockPos max;
 	private final @Nullable Block block;
 	private final int target;
+	// the followed entity's kind, the drone finds a mob by it with its camera
+	private final @Nullable String entity;
 	private final int ticks;
 
-	private GotoJob(Mode mode, BlockPos min, BlockPos max, @Nullable Block block, int target, int ticks) {
+	private GotoJob(Mode mode, BlockPos min, BlockPos max, @Nullable Block block, int target, @Nullable String entity, int ticks) {
 		this.mode = mode;
 		this.min = min;
 		this.max = max;
 		this.block = block;
 		this.target = target;
+		this.entity = entity;
 		this.ticks = ticks;
 	}
 
 	public static GotoJob point(BlockPos point) {
-		return new GotoJob(Mode.POINT, point, point, null, -1, 0);
+		return new GotoJob(Mode.POINT, point, point, null, -1, null, 0);
 	}
 
 	/** A block of the named kind somewhere in the box between a and b, with where they are for the client's scoring */
@@ -68,13 +71,14 @@ public final class GotoJob implements DroneJob {
 		if (found.isEmpty()) {
 			throw new IllegalArgumentException("there is no " + name + " in that region");
 		}
-		return new GotoJob(Mode.BLOCK, min, max, block, -1, 0);
+		return new GotoJob(Mode.BLOCK, min, max, block, -1, null, 0);
 	}
 
 	/** Follow target, for ticks ticks in the band or, with 0, until stopped */
 	public static GotoJob follow(Entity target, int ticks) {
 		BlockPos at = target.blockPosition();
-		return new GotoJob(Mode.FOLLOW, at.offset(-FOLLOW_REACH, -8, -FOLLOW_REACH), at.offset(FOLLOW_REACH, 24, FOLLOW_REACH), null, target.getId(), ticks);
+		String entity = BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()).toString();
+		return new GotoJob(Mode.FOLLOW, at.offset(-FOLLOW_REACH, -8, -FOLLOW_REACH), at.offset(FOLLOW_REACH, 24, FOLLOW_REACH), null, target.getId(), entity, ticks);
 	}
 
 	/** Static targets in the arena record, see ArenaRecord.targets, the client scores the rest */
@@ -114,6 +118,7 @@ public final class GotoJob implements DroneJob {
 			case FOLLOW -> {
 				json.addProperty("kind", "follow");
 				json.addProperty("target", this.target);
+				json.addProperty("entity", this.entity);
 				json.addProperty("near", NEAR);
 				json.addProperty("far", FAR);
 				json.addProperty("ticks", this.ticks);

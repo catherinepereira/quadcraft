@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { SCHEMA } from "../config";
 import {
   decodeObs,
+  type Arena,
   type DroneAction,
   type LogLine,
   type MaskIds,
@@ -44,6 +45,9 @@ interface BridgeState {
   memories: Record<number, Memory>;
   // the drone whose memory changed last
   memoryDrone: number | null;
+  // the true layout of the shown drone's arena, asked for once per episode since the drone's state never carries it
+  arena: Arena | null;
+  arenaEpisode: string | null;
 
   connect: () => void;
   takeControl: () => void;
@@ -140,6 +144,8 @@ export const useBridge = create<BridgeState>((set, get) => ({
   latencyMs: null,
   memories: {},
   memoryDrone: null,
+  arena: null,
+  arenaEpisode: null,
 
   connect: () => {
     if (socket && socket.readyState <= WebSocket.OPEN) return;
@@ -175,6 +181,11 @@ export const useBridge = create<BridgeState>((set, get) => ({
         if (obs.replyTo != null) {
           pending.get(obs.replyTo)?.resolve(obs);
           pending.delete(obs.replyTo);
+        }
+        const episodeId = obs.episode?.id ?? null;
+        if (episodeId !== get().arenaEpisode) {
+          set({ arenaEpisode: episodeId, arena: null });
+          if (episodeId) send({ type: "arena" });
         }
         set((s) => ({
           latest: obs,
@@ -239,6 +250,9 @@ export const useBridge = create<BridgeState>((set, get) => ({
           break;
         case "log":
           set((s) => ({ logs: [...s.logs, msg.entry].slice(-LOG_LIMIT) }));
+          break;
+        case "arena":
+          set({ arena: msg.arena });
           break;
         case "error":
           if (msg.replyTo != null && pending.has(msg.replyTo)) {

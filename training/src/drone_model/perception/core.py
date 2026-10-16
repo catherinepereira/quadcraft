@@ -13,8 +13,8 @@ import numpy as np
 from .memory import AIR, Cell, Change, VoxelMemory, base_name
 from .mobs import MobTracker, mob_ids
 from .classes import alias
-from .reader import INDEX, OTHER, SKY, class_lut, mask_lut
-from .worldmap import WorldMap
+from .reader import CLASSES, INDEX, OTHER, SKY, class_lut, mask_lut
+from .worldmap import WorldMap, camera_axes
 
 # a scanned cell counts as this many reads, far more than frames add
 SCAN_VOTES = 1000.0
@@ -98,6 +98,28 @@ class DroneCore:
         h, w = self.obs["depth"].shape
         middle = (slice(h // 2 - size // 2, h // 2 - size // 2 + size), slice(w // 2 - size // 2, w // 2 - size // 2 + size))
         return self.obs["mask"][middle], self.obs["depth"][middle], self.classes[middle]
+
+    def aim(self, state: dict) -> dict | None:
+        """
+        What the crosshair rests on as the drone's camera reads it: the cell and face the center ray reaches through depth,
+        how far, and the class the frame shows there. None before the first frame or when the ray reaches nothing in range
+        """
+        if self.obs is None:
+            return None
+        h, w = self.obs["depth"].shape
+        middle = (slice(h // 2 - 1, h // 2 + 1), slice(w // 2 - 1, w // 2 + 1))
+        dist = float(np.median(self.obs["depth"][middle]))
+        if dist >= self.depth_max - 0.01:
+            return None
+        eye, forward, _, _ = camera_axes(state)
+        point = eye + forward * dist
+        # step into the surface so the hit lands in the block that owns the face
+        cell = np.floor(point + forward * 0.15).astype(np.int64)
+        local = point - cell
+        axis = int(np.argmin(np.minimum(local, 1 - local)))
+        face = (("west", "east"), ("down", "up"), ("north", "south"))[axis][int(local[axis] > 0.5)]
+        classes = self.classes[middle].ravel()
+        return {"pos": tuple(int(v) for v in cell), "face": face, "dist": dist, "block": CLASSES[int(np.bincount(classes).argmax())]}
 
     def take_scans(self, job: dict) -> None:
         """Reads the boxes the server scanned for a job into the memory once, each cell as a certain read"""

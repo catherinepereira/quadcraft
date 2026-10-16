@@ -42,7 +42,7 @@ def test_sky_adds_nothing():
 
 
 def test_harvest_reads_ripe_crops_and_bare_plots_from_memory():
-    from drone_model.scripted.arena import HarvestExpert
+    from drone_model.scripted.harvest import HarvestExpert
     from drone_model.perception.memory import Cell
 
     expert = HarvestExpert({"blocks": [], "entities": ["quadcraft:drone", "minecraft:zombie", "minecraft:cow"], "categories": ["misc", "monster", "creature"], "entityBase": 32768}, reader=object())

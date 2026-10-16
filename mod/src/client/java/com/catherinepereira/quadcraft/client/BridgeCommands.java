@@ -5,6 +5,7 @@ import com.catherinepereira.quadcraft.client.obs.IdTables;
 import com.catherinepereira.quadcraft.entity.DroneEntity;
 import com.catherinepereira.quadcraft.net.ExportSchematicPayload;
 import com.catherinepereira.quadcraft.net.RenameDronePayload;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import java.util.Random;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -126,6 +127,18 @@ final class BridgeCommands {
 					return;
 				}
 				ClientPlayNetworking.send(new RenameDronePayload(msg.has("name") ? msg.get("name").getAsString() : ""));
+			}
+			case "arena" -> {
+				// the true arena layout of this session's drone, or the active one, for scoring, data collection, and debug views
+				// It is never part of a drone's state
+				DroneRun of = run != null ? run : this.runtime.active();
+				JsonObject reply = new JsonObject();
+				reply.addProperty("type", "arena");
+				if (id != null) {
+					reply.addProperty("replyTo", id);
+				}
+				reply.add("arena", of != null && of.task().episodeId() != null ? of.task().arena() : JsonNull.INSTANCE);
+				session.send(reply);
 			}
 			case "configure", "act", "step", "view", "reset", "record", "pilot", "release" -> {
 				if (run == null) {

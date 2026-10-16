@@ -17,7 +17,7 @@ import numpy as np
 from quadcraft import DroneEnv
 
 from ..paths import CHECKPOINTS, REPORTS
-from ..perception.reader import Reader
+from ..perception.reader import FRAME, Reader
 from ..torch_utils import pick_device, write_report
 from .registry import get
 from .spec import Step
@@ -75,7 +75,7 @@ def main() -> None:
     parser.add_argument("--policy", required=True)
     parser.add_argument("--checkpoint", type=Path, default=None, help="checkpoints/<policy>.pt by default")
     parser.add_argument("--teacher", action="store_true", help="fly the policy's teacher alone")
-    parser.add_argument("--task", default="navigate_to")
+    parser.add_argument("--task", default="goto_point")
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--obstacles", type=int, default=8)
     parser.add_argument("--terrain", choices=["flat", "rough", "cave"], default="flat")
@@ -93,7 +93,7 @@ def main() -> None:
         options["prey"] = args.prey
     if args.max_steps:
         options["maxSteps"] = args.max_steps
-    env = DroneEnv(task=args.task, tools=True, streams=runner.spec.streams, action_pause_ms=0, task_options=options)
+    env = DroneEnv(task=args.task, tools=True, streams=runner.spec.streams, action_pause_ms=0, width=FRAME[1], height=FRAME[0], task_options=options)
     results = []
     try:
         for i in range(args.episodes):

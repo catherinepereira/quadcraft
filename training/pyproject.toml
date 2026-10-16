@@ -19,6 +19,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.4"]
+# the offline block renderer, collect.render
+render = ["moderngl>=5.13"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/quadcraft", "src/drone_model"]

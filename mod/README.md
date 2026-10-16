@@ -104,11 +104,6 @@ Rows top to bottom, `_` is an empty slot.
 
 | Task | Goal |
 | --- | --- |
-| navigate_to | fly to the orange marker block |
-| dig_block | mine the coal ore among stone decoy pedestals |
-| place_block | place oak planks on the lime pad |
-| chest_transfer | move everything from the stocked chest into the empty one |
-| mine_and_deliver | mine every coal ore and put the coal in the chest |
 | replicate_build | copy the small build on the cyan base onto the lime base |
 | harvest_crops | harvest the ripe wheat in a field and replant every plot |
 | patrol_area | fly over every part of the arena |

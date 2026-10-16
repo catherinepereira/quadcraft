@@ -12,8 +12,6 @@ const NUMBER_FIELDS: { key: string; label: string; step?: number }[] = [
   { key: "smoothing", label: "Velocity smoothing", step: 0.05 },
   { key: "radius", label: "Arena radius" },
   { key: "obstacles", label: "Obstacles" },
-  { key: "maxSteps", label: "Max steps per episode" },
-  { key: "successDist", label: "Success distance", step: 0.1 },
   { key: "collisionPenalty", label: "Collision penalty per tick", step: 0.01 },
   { key: "resetSettleTicks", label: "Reset settle ticks" },
   { key: "boundsPadding", label: "Geofence padding (blocks)" },

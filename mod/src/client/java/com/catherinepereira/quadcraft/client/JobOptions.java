@@ -160,12 +160,9 @@ public final class JobOptions {
 	}
 
 	/** Tool tasks take more steps: flying, mining, and container work */
-	public static int defaultMaxSteps(TaskKind kind, int navigateSteps) {
+	public static int defaultMaxSteps(TaskKind kind) {
 		return switch (kind) {
-			case NAVIGATE_TO -> navigateSteps;
-			case DIG_BLOCK, PLACE_BLOCK -> 400;
-			case CHEST_TRANSFER -> 600;
-			case MINE_AND_DELIVER, REPLICATE_BUILD -> 900;
+			case REPLICATE_BUILD -> 900;
 			case HARVEST_CROPS, PATROL_AREA, FIND_BLOCK, FOLLOW_MOB -> 1500;
 			case GOTO_POINT, DOCK_STATION, STUDIO -> 600;
 			case HUNT_MOBS -> 3000;

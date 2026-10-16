@@ -56,10 +56,7 @@ export interface DroneState {
   pitch?: number;
   tier?: string;
   battery?: Battery;
-  lookingAt?: { block: string; pos: Vec3; dist: number } | null;
-  marker?: Vec3 | null;
   collided?: boolean;
-  arena?: Arena | null;
   job?: Job | null;
   bounds?: [number, number, number, number, number, number] | null;
   inventory?: Slot[];

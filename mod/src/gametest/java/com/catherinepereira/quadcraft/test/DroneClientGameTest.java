@@ -51,8 +51,8 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 
 /**
- * Runs in a full game client: builds a superflat world, flies navigate_to over the bridge in lockstep
- * with a scripted policy that reads the marker position, and checks frames, scoring, and recording
+ * Runs in a full game client: builds a superflat world, flies goto_point over the bridge in lockstep
+ * with a scripted policy that flies to the job's point, and checks frames, scoring, and recording
  */
 public class DroneClientGameTest implements FabricClientGameTest {
 	private static final int PORT = 8318;
@@ -89,7 +89,7 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			JsonObject configure = msg("configure");
 			configure.addProperty("mode", "lockstep");
 			bridge.send(configure);
-			// the scripted policy reads the marker, so its episodes go to the test folder, out of the training data
+			// scripted test episodes go to the test folder, out of the training data
 			JsonObject record = msg("record");
 			record.addProperty("on", true);
 			record.addProperty("test", true);
@@ -101,17 +101,21 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			JsonObject reset = msg("reset");
 			reset.addProperty("id", 1);
 			reset.addProperty("seed", 7);
+			JsonObject flightOptions = new JsonObject();
+			flightOptions.addProperty("task", "goto_point");
+			reset.add("options", flightOptions);
 			bridge.send(reset);
 			BridgeTestClient.Obs obs = awaitObs(ctx, bridge, 1);
-			ctx.takeScreenshot("quadcraft-navigate-start");
+			ctx.takeScreenshot("quadcraft-goto-start");
 			checkFrame(obs);
 
 			int id = 2;
 			boolean success = false;
+			JsonArray point = obs.header().getAsJsonObject("state").getAsJsonObject("job").getAsJsonArray("point");
 			for (int i = 0; i < 400 && !success; i++) {
 				JsonObject step = msg("step");
 				step.addProperty("id", id);
-				step.add("action", scriptedAction(obs.header().getAsJsonObject("state")));
+				step.add("action", scriptedAction(obs.header().getAsJsonObject("state"), point));
 				step.addProperty("ticks", 1);
 				bridge.send(step);
 				obs = awaitObs(ctx, bridge, id++);
@@ -121,37 +125,39 @@ public class DroneClientGameTest implements FabricClientGameTest {
 					throw new AssertionError("episode ended without success: " + episode);
 				}
 				if (i == 10) {
-					ctx.takeScreenshot("quadcraft-navigate-flying");
+					ctx.takeScreenshot("quadcraft-goto-flying");
 				}
 			}
-			check(success, "scripted policy never reached the marker");
-			ctx.takeScreenshot("quadcraft-navigate-done");
+			check(success, "scripted policy never reached the point");
+			ctx.takeScreenshot("quadcraft-goto-done");
 
 			JsonObject obstacleReset = msg("reset");
 			obstacleReset.addProperty("id", id);
 			obstacleReset.addProperty("seed", 8);
 			JsonObject options = new JsonObject();
+			options.addProperty("task", "goto_point");
 			options.addProperty("obstacles", 6);
 			obstacleReset.add("options", options);
 			bridge.send(obstacleReset);
 			obs = awaitObs(ctx, bridge, id++);
-			checkArena(obs.header().getAsJsonObject("state"), 6);
-			ctx.takeScreenshot("quadcraft-navigate-obstacles");
+			checkArena(arena(ctx, bridge), 6);
+			ctx.takeScreenshot("quadcraft-goto-obstacles");
 
 			JsonObject caveReset = msg("reset");
 			caveReset.addProperty("id", id);
 			caveReset.addProperty("seed", 9);
 			JsonObject caveOptions = new JsonObject();
+			caveOptions.addProperty("task", "goto_point");
 			caveOptions.addProperty("obstacles", 4);
 			caveOptions.addProperty("terrain", "cave");
 			caveReset.add("options", caveOptions);
 			bridge.send(caveReset);
 			obs = awaitObs(ctx, bridge, id++);
-			JsonObject caveArena = obs.header().getAsJsonObject("state").getAsJsonObject("arena");
+			JsonObject caveArena = arena(ctx, bridge);
 			check(caveArena.get("terrain").getAsString().equals("cave"), "expected a cave arena, got " + caveArena.get("terrain"));
 			check(caveArena.getAsJsonArray("stalactites").size() >= 4, "expected at least 4 stalactites, got " + caveArena.get("stalactites"));
-			checkArena(obs.header().getAsJsonObject("state"), 4);
-			ctx.takeScreenshot("quadcraft-navigate-cave");
+			checkArena(caveArena, 4);
+			ctx.takeScreenshot("quadcraft-goto-cave");
 
 			JsonObject buildReset = msg("reset");
 			buildReset.addProperty("id", id);
@@ -162,7 +168,8 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			bridge.send(buildReset);
 			obs = awaitObs(ctx, bridge, id++);
 			JsonObject buildState = obs.header().getAsJsonObject("state");
-			JsonArray blueprint = buildState.getAsJsonObject("arena").getAsJsonArray("blueprint");
+			JsonObject arenaJson = arena(ctx, bridge);
+			JsonArray blueprint = arenaJson.getAsJsonArray("blueprint");
 			check(blueprint.size() >= 3, "expected a blueprint of at least 3 blocks, got " + blueprint);
 			for (var cell : blueprint) {
 				String block = cell.getAsJsonObject().get("block").getAsString();
@@ -172,7 +179,6 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			ctx.takeScreenshot("quadcraft-replicate-build");
 
 			// a copy job over the same reference build, then the source saved and rebuilt from the schematic
-			JsonObject arenaJson = buildState.getAsJsonObject("arena");
 			JsonArray ref = arenaJson.getAsJsonArray("referenceBase");
 			JsonArray site = arenaJson.getAsJsonArray("buildBase");
 			int rx = ref.get(0).getAsInt();
@@ -233,13 +239,14 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			digReset.addProperty("id", id);
 			digReset.addProperty("seed", 5);
 			JsonObject digOptions = new JsonObject();
-			digOptions.addProperty("task", "dig_block");
+			digOptions.addProperty("task", "find_block");
 			digReset.add("options", digOptions);
 			bridge.send(digReset);
 			obs = awaitObs(ctx, bridge, id++);
 
-			// a safe region over the ore keeps the drone from breaking it, removing the region lets it through
-			JsonArray ore = obs.header().getAsJsonObject("state").getAsJsonObject("arena").getAsJsonArray("targets").get(0).getAsJsonArray();
+			// a safe region over the find job's block keeps the drone from breaking it, removing the region lets it through
+			JsonArray ore = arena(ctx, bridge).getAsJsonArray("targets").get(0).getAsJsonArray();
+			String findKind = obs.header().getAsJsonObject("state").getAsJsonObject("job").get("block").getAsString();
 			JsonObject guard = msg("select");
 			guard.add("cornerA", ore);
 			guard.add("cornerB", ore);
@@ -253,12 +260,13 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			for (int i = 0; i < 150 && !refused; i++) {
 				JsonObject step = msg("step");
 				step.addProperty("id", id);
-				step.add("action", digAction(obs.header().getAsJsonObject("state")));
+				step.add("action", digActionAt(obs.header().getAsJsonObject("state"), ore));
 				bridge.send(step);
 				obs = awaitObs(ctx, bridge, id++);
-				check(!obs.header().getAsJsonObject("episode").get("success").getAsBoolean(), "the drone broke ore inside a safe region");
 				for (var e : obs.header().getAsJsonObject("state").getAsJsonArray("events")) {
-					refused |= e.getAsJsonObject().get("type").getAsString().equals("break_failed");
+					String type = e.getAsJsonObject().get("type").getAsString();
+					check(!type.equals("break"), "the drone broke a block inside a safe region");
+					refused |= type.equals("break_failed");
 				}
 			}
 			check(refused, "no break_failed event while mining inside a safe region");
@@ -271,19 +279,22 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			for (int i = 0; i < 400 && !dug; i++) {
 				JsonObject step = msg("step");
 				step.addProperty("id", id);
-				step.add("action", digAction(obs.header().getAsJsonObject("state")));
+				step.add("action", digActionAt(obs.header().getAsJsonObject("state"), ore));
 				bridge.send(step);
 				obs = awaitObs(ctx, bridge, id++);
-				dug = obs.header().getAsJsonObject("episode").get("success").getAsBoolean();
+				for (var e : obs.header().getAsJsonObject("state").getAsJsonArray("events")) {
+					dug |= e.getAsJsonObject().get("type").getAsString().equals("break");
+				}
 				if (i == 30) {
 					ctx.takeScreenshot("quadcraft-dig-mining");
 				}
 			}
-			check(dug, "scripted miner never broke the coal ore");
-			check(countItem(obs.header().getAsJsonObject("state"), "minecraft:coal") >= 1, "no coal in the drone inventory after mining");
+			check(dug, "scripted miner never broke the " + findKind);
+			String loot = findKind.equals("minecraft:coal_ore") ? "minecraft:coal" : findKind;
+			check(countItem(obs.header().getAsJsonObject("state"), loot) >= 1, "no " + loot + " in the drone inventory after mining");
 			ctx.takeScreenshot("quadcraft-dig-done");
 
-			// the same arena rebuilt, then mined as a player's mine_region job over a box around the ore
+			// the same arena rebuilt, then mined as a player's mine_region job over a box around the block
 			JsonObject digAgain = msg("reset");
 			digAgain.addProperty("id", id);
 			digAgain.addProperty("seed", 5);
@@ -297,8 +308,8 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			mineJob.addProperty("id", id);
 			JsonObject mineOptions = new JsonObject();
 			mineOptions.addProperty("task", "mine_region");
-			// two kinds, only coal is in the box, so the job is done once the ore is out
-			mineOptions.addProperty("blocks", "coal_ore, minecraft:iron_ore");
+			// two kinds, only the found block's is in the box, so the job is done once it's out
+			mineOptions.addProperty("blocks", findKind + ", minecraft:iron_ore");
 			mineOptions.add("region", ints(ox - 1, oy - 1, oz - 1, ox + 1, oy + 1, oz + 1));
 			mineJob.add("options", mineOptions);
 			bridge.send(mineJob);
@@ -463,7 +474,7 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			bridge.send(findReset);
 			obs = awaitObs(ctx, bridge, id++);
 			JsonObject findJob = obs.header().getAsJsonObject("state").getAsJsonObject("job");
-			JsonObject findArena = obs.header().getAsJsonObject("state").getAsJsonObject("arena");
+			JsonObject findArena = arena(ctx, bridge);
 			check(findJob != null && findJob.get("kind").getAsString().equals("find") && findArena.getAsJsonArray("targets").size() == 1
 				&& findArena.getAsJsonArray("distractors").size() == 3, "expected a find job with one target and three look-alikes, got " + findJob);
 
@@ -501,7 +512,8 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			bridge.send(followReset);
 			obs = awaitObs(ctx, bridge, id++);
 			JsonObject followState = obs.header().getAsJsonObject("state");
-			check(followState.getAsJsonObject("job").get("kind").getAsString().equals("follow") && followState.has("followTarget"), "expected a follow job with its target's position, got " + followState.get("job"));
+			JsonObject followJob = followState.getAsJsonObject("job");
+			check(followJob.get("kind").getAsString().equals("follow") && followJob.has("entity") && !followState.has("followTarget"), "expected a follow job naming its target's kind and no target position, got " + followState);
 			ctx.takeScreenshot("quadcraft-follow-mob");
 
 			ctx.setScreen(() -> new JobScreen(runtime));
@@ -769,18 +781,18 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			scoutAgain.send(secondHello);
 			awaitText(ctx, scoutAgain, "welcome");
 			int scoutReset = id++;
-			scoutAgain.send(fleetReset(scoutReset, "dig_block", 1));
+			scoutAgain.send(fleetReset(scoutReset, "find_block", 1));
 			ctx.waitTicks(20);
 			check(scoutAgain.frames.isEmpty(), "a fleet reset was answered before the whole fleet asked");
 			int mainReset = id++;
-			bridge.send(fleetReset(mainReset, "navigate_to", 0));
+			bridge.send(fleetReset(mainReset, "goto_point", 0));
 			BridgeTestClient.Obs mainFleet = awaitObs(ctx, bridge, mainReset);
 			BridgeTestClient.Obs scoutFleet = awaitObs(ctx, scoutAgain, scoutReset);
-			JsonObject mainArena = mainFleet.header().getAsJsonObject("state").getAsJsonObject("arena");
-			JsonObject scoutArena = scoutFleet.header().getAsJsonObject("state").getAsJsonObject("arena");
+			JsonObject mainArena = arena(ctx, bridge);
+			JsonObject scoutArena = arena(ctx, scoutAgain);
 			check(droneId(mainFleet) == mainDrone && droneId(scoutFleet) == scout[0], "the fleet answered with drones " + droneId(mainFleet) + " and " + droneId(scoutFleet));
 			check(mainArena.get("origin").equals(scoutArena.get("origin")) && mainArena.get("radius").equals(scoutArena.get("radius")), "the fleet got two arenas, " + mainArena.get("origin") + " and " + scoutArena.get("origin"));
-			check(mainArena.get("task").getAsString().equals("navigate_to") && scoutArena.get("task").getAsString().equals("dig_block"), "the fleet's tasks got mixed up");
+			check(mainArena.get("task").getAsString().equals("goto_point") && scoutArena.get("task").getAsString().equals("find_block"), "the fleet's tasks got mixed up");
 			check(mainArena.get("radius").getAsInt() > 12, "the shared arena didn't grow for two drones, radius " + mainArena.get("radius"));
 			for (BridgeTestClient client : new BridgeTestClient[] {bridge, scoutAgain}) {
 				JsonObject step = msg("step");
@@ -809,7 +821,7 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			ctx.waitTicks(20);
 			bridge.close();
 
-			Path data = testData.resolve("navigate_to");
+			Path data = testData.resolve("goto_point");
 			ctx.waitFor(mc -> runtime.recorder().queueDepth() == 0, 200);
 			check(Files.isDirectory(data), "no recordings in " + data);
 			check(!runtime.recorder().dataDir().equals(testData), "recording stayed on the test folder after it stopped");
@@ -841,12 +853,18 @@ public class DroneClientGameTest implements FabricClientGameTest {
 		ctx.takeScreenshot("quadcraft-after-external");
 	}
 
-	private static void checkArena(JsonObject state, int expected) {
-		JsonArray pillars = state.getAsJsonObject("arena").getAsJsonArray("obstacles");
+	/** The true arena layout of the session's drone, which its state never carries */
+	private static JsonObject arena(ClientGameTestContext ctx, BridgeTestClient bridge) {
+		bridge.send(msg("arena"));
+		return awaitText(ctx, bridge, "arena").getAsJsonObject("arena");
+	}
+
+	private static void checkArena(JsonObject arena, int expected) {
+		JsonArray pillars = arena.getAsJsonArray("obstacles");
 		check(pillars.size() == expected, "expected " + expected + " pillars, got " + pillars);
-		JsonArray marker = state.getAsJsonArray("marker");
-		double mx = marker.get(0).getAsInt() + 0.5;
-		double mz = marker.get(2).getAsInt() + 0.5;
+		JsonArray goal = arena.getAsJsonObject("job").getAsJsonArray("point");
+		double mx = goal.get(0).getAsInt() + 0.5;
+		double mz = goal.get(2).getAsInt() + 0.5;
 		for (var p : pillars) {
 			JsonArray pillar = p.getAsJsonArray();
 			int x = pillar.get(0).getAsInt();
@@ -854,15 +872,11 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			int w = pillar.get(2).getAsInt();
 			double nx = Math.clamp(mx, x, x + w);
 			double nz = Math.clamp(mz, z, z + w);
-			check(Math.hypot(mx - nx, mz - nz) >= 2.0, "pillar " + pillar + " crowds the marker " + marker);
+			check(Math.hypot(mx - nx, mz - nz) >= 2.0, "pillar " + pillar + " crowds the goal point " + goal);
 		}
 	}
 
 	// flies to about 2.5 blocks from the ore, aims at its center, and holds break
-	private static JsonObject digAction(JsonObject state) {
-		return digActionAt(state, state.getAsJsonObject("arena").getAsJsonArray("targets").get(0).getAsJsonArray());
-	}
-
 	private static JsonObject digActionAt(JsonObject state, JsonArray target) {
 		JsonArray pos = state.getAsJsonArray("pos");
 		double ex = pos.get(0).getAsDouble();
@@ -921,12 +935,11 @@ public class DroneClientGameTest implements FabricClientGameTest {
 		return action;
 	}
 
-	private static JsonObject scriptedAction(JsonObject state) {
+	private static JsonObject scriptedAction(JsonObject state, JsonArray point) {
 		JsonArray pos = state.getAsJsonArray("pos");
-		JsonArray marker = state.getAsJsonArray("marker");
-		double dx = marker.get(0).getAsDouble() + 0.5 - pos.get(0).getAsDouble();
-		double dy = marker.get(1).getAsDouble() + 0.5 - (pos.get(1).getAsDouble() + 0.2);
-		double dz = marker.get(2).getAsDouble() + 0.5 - pos.get(2).getAsDouble();
+		double dx = point.get(0).getAsDouble() + 0.5 - pos.get(0).getAsDouble();
+		double dy = point.get(1).getAsDouble() + 0.5 - (pos.get(1).getAsDouble() + 0.2);
+		double dz = point.get(2).getAsDouble() + 0.5 - pos.get(2).getAsDouble();
 		double targetYaw = Math.toDegrees(Math.atan2(-dx, dz));
 		double yawError = wrap(targetYaw - state.get("yaw").getAsDouble());
 		double horizontal = Math.sqrt(dx * dx + dz * dz);

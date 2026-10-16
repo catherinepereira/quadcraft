@@ -16,5 +16,6 @@ export function time(ts: string): string {
 }
 
 export function shortId(id: string): string {
-  return id.replace(/^navigate_to-/, "");
+  // episode ids start with their task
+  return id.replace(/^[a-z_]+-/, "");
 }

@@ -13,8 +13,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
@@ -42,19 +42,6 @@ public final class StateJson {
 		json.addProperty("maxHealth", drone.getMaxHealth());
 		json.addProperty("yaw", drone.getYRot());
 		json.addProperty("pitch", drone.getXRot());
-		Vec3 eye = drone.getEyePosition();
-		Vec3 end = eye.add(drone.getLookAngle().scale(32.0));
-		BlockHitResult hit = mc.level.clip(new ClipContext(eye, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, drone));
-		if (hit.getType() == HitResult.Type.BLOCK) {
-			JsonObject looking = new JsonObject();
-			looking.addProperty("block", BuiltInRegistries.BLOCK.getKey(mc.level.getBlockState(hit.getBlockPos()).getBlock()).toString());
-			looking.add("pos", Json.pos(hit.getBlockPos()));
-			looking.addProperty("face", hit.getDirection().getName());
-			looking.addProperty("dist", hit.getLocation().distanceTo(eye));
-			json.add("lookingAt", looking);
-		} else {
-			json.add("lookingAt", JsonNull.INSTANCE);
-		}
 		json.addProperty("collided", controller.lastCollided());
 		json.add("range", range(mc, drone, sensorRange));
 		// lets scripts project world points into the frame, same frustum math as Raycaster
@@ -65,15 +52,13 @@ public final class StateJson {
 		camera.addProperty("eyeHeight", drone.getEyeHeight());
 		json.add("camera", camera);
 		boolean episode = task.episodeId() != null;
-		json.add("marker", episode ? Json.pos(task.marker()) : JsonNull.INSTANCE);
-		// privileged layout for scripted experts and the dashboard minimap, DroneEnv keeps it out of the policy's observation
-		json.add("arena", episode ? task.arena() : JsonNull.INSTANCE);
 		// the job (boxes and schematic name) is the drone's instruction, so policies may read it too
+		// The rest of the arena layout is never in the state, tools that need it ask the bridge for it
 		JsonObject arena = episode ? task.arena() : null;
 		json.add("job", arena != null && arena.has("job") ? arena.get("job") : JsonNull.INSTANCE);
 		JsonObject job = arena != null && arena.has("job") ? arena.getAsJsonObject("job") : null;
-		// a follow's target is the drone's to know, like a beacon the player carries
-		if (job != null && job.has("target") && mc.level.getEntity(job.get("target").getAsInt()) instanceof Entity target) {
+		// a player carries the drone's tablet, so a followed player is a beacon the drone knows, a followed mob it finds with its camera
+		if (job != null && job.has("target") && mc.level.getEntity(job.get("target").getAsInt()) instanceof Player target) {
 			json.add("followTarget", vec(target.getBoundingBox().getCenter()));
 		}
 		if (job != null && job.has("scan") && job.has("hunt") && job.get("hunt").getAsBoolean()) {

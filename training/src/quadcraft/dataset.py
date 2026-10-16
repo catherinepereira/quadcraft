@@ -59,7 +59,7 @@ def load_episode(path: Path | str) -> Episode:
     return Episode(path, meta, steps)
 
 
-def list_episodes(root: Path | str, task: str = "navigate_to", outcome: str | None = None) -> list[Episode]:
+def list_episodes(root: Path | str, task: str, outcome: str | None = None) -> list[Episode]:
     task_dir = Path(root) / task
     if not task_dir.is_dir():
         return []

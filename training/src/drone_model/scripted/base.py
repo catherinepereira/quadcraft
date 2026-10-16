@@ -9,9 +9,9 @@ import math
 
 import numpy as np
 
+from ..perception.classes import alias
 from ..perception.core import DroneCore
-from ..perception.worldmap import perceivable
-from .navigate import waypoint
+from .route import waypoint
 
 TOOLS = ("none", "break", "place", "open", "close", "attack")
 REACH = 4.4
@@ -99,9 +99,9 @@ def place_viewpoint(state: dict, cell, d) -> tuple[float, float, float]:
     return (c[0] + lean[0], c[1] + TOP_VIA_HEIGHT, c[2] + lean[1])
 
 
-def looking_at(state: dict, pos) -> bool:
-    hit = state.get("lookingAt")
-    return bool(hit) and tuple(hit["pos"]) == tuple(pos) and hit["dist"] <= REACH
+def looking_at(hit: dict | None, pos) -> bool:
+    """Whether the crosshair, as the camera reads it, rests on the block at pos within reach"""
+    return hit is not None and hit["pos"] == tuple(pos) and hit["dist"] <= REACH
 
 
 def carried(state: dict, items: set[str] | None = None) -> list[int]:
@@ -152,14 +152,13 @@ class Planner:
 
     def act(self, state: dict, obs: dict) -> dict:
         self.intent = None
-        state = perceivable(state)
         self.bounds = state["bounds"]
         self.map.fence = self.bounds
         if self.home is None:
             self.home = (state["pos"][0], state["pos"][2])
         self.obs = self.core.see(state, obs)
         pos = state["pos"]
-        # told to climb and didn't rise for a few steps, there is a ceiling just over the drone's 0.4-block-tall body.
+        # told to climb and didn't rise for a few steps, there is a ceiling just over the drone's 0.4-block-tall body
         # One stalled step proves nothing, a tool action can hold the drone for a tick
         stalled = self.last_up > 0.3 and self.last_pos is not None and pos[1] - self.last_pos[1] < 0.02
         self.stalled_climbs = self.stalled_climbs + 1 if stalled else 0
@@ -363,11 +362,12 @@ class Planner:
             move, arrived = self.fly(state, point, max(1.2, standoff - lift / 2), hover + lift, column=(block[0], block[2]))
         dist = math.dist(point, (state["pos"][0], state["pos"][1] + state["camera"]["eyeHeight"], state["pos"][2]))
         aimed = aim_angle(state, point) < AIM_TOLERANCE and dist <= REACH
-        on_target = aimed and looking_at(state, block)
+        hit = self.core.aim(state)
+        expect = alias(expect) if expect else expect
+        on_target = aimed and looking_at(hit, block)
         # the remembered spot can be off by a block, the crosshair on the right kind of block nearby is good enough
-        hit = state.get("lookingAt")
         if face is not None:
-            on_target = aimed and looking_at(state, block) and hit.get("face") == face
+            on_target = on_target and hit["face"] == face
         elif not on_target and expect and hit and hit["block"] == expect and hit["dist"] <= REACH:
             near = max(abs(a - b) for a, b in zip(hit["pos"], block)) <= 1
             on_target = near and aim_angle(state, point) < 2 * AIM_TOLERANCE

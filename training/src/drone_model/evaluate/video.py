@@ -17,11 +17,10 @@ from PIL import Image, ImageDraw, ImageFont
 from ..framework.evaluate import Runner, outcome
 from ..framework.registry import POLICIES
 from ..paths import CHECKPOINTS, VIDEOS
-from ..perception.reader import Reader
+from ..perception.reader import FRAME, Reader
 
 CAM_W, CAM_H = 480, 360
 CHASE_W, CHASE_H = 640, 360
-AGENT_W, AGENT_H = 160, 120
 SIDE_W, SIDE_H = 240, 180
 INSET_W, INSET_H = 160, 120
 STRIP_H = 64
@@ -55,8 +54,8 @@ def depth_colors(depth: np.ndarray, depth_max: float = 32.0) -> np.ndarray:
     return (near + (far - near) * t).astype(np.uint8)
 
 
-def draw_map(draw: ImageDraw.ImageDraw, state: dict, box: tuple[int, int, int, int]) -> None:
-    arena = state.get("arena")
+def draw_map(draw: ImageDraw.ImageDraw, state: dict, arena: dict | None, box: tuple[int, int, int, int]) -> None:
+    """The true arena layout from above for the viewer, which the drone never reads"""
     if not arena or "pos" not in state:
         return
     x0, y0, x1, y1 = box
@@ -94,7 +93,7 @@ def draw_map(draw: ImageDraw.ImageDraw, state: dict, box: tuple[int, int, int, i
     draw.ellipse((sx(px) - 4, sz(pz) - 4, sx(px) + 4, sz(pz) + 4), fill=ACCENT)
 
 
-def compose(obs: dict, info: dict, title: str, font) -> np.ndarray:
+def compose(obs: dict, info: dict, arena: dict | None, title: str, font) -> np.ndarray:
     state = info["state"]
     episode = info["episode"] or {}
     chase = obs.get("chase")
@@ -114,7 +113,7 @@ def compose(obs: dict, info: dict, title: str, font) -> np.ndarray:
             canvas.paste(Image.fromarray(mask_colors(obs["mask"])).resize((SIDE_W, SIDE_H), Image.NEAREST), (CAM_W, SIDE_H))
         labels = (((CAM_W + 8, 4), "depth"), ((CAM_W + 8, SIDE_H + 4), "semantic mask"))
     draw = ImageDraw.Draw(canvas)
-    draw_map(draw, state, (8, 8, 120, 120))
+    draw_map(draw, state, arena, (8, 8, 120, 120))
     outcome = "success" if episode.get("success") else "out of bounds" if episode.get("outOfBounds") else "timed out" if episode.get("truncated") else "running"
     line1 = f"{title}   step {episode.get('step', 0)}   reward {episode.get('totalReward', 0):.2f}   collisions {episode.get('collisions', 0)}   {outcome}"
     items = [f"{c} {n.split(':')[1]}" for n, c in state.get("inventory", []) if c > 0]
@@ -139,7 +138,7 @@ def frame_size(chase: bool) -> tuple[int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", default="navigate_to")
+    parser.add_argument("--task", default="goto_point")
     parser.add_argument("--teacher-sees", choices=["reader", "mask"], default="reader", help="what the teacher sees with, mask is the mod's ground truth")
     parser.add_argument("--reader", type=Path, default=CHECKPOINTS / "reader.pt")
     parser.add_argument("--policy", choices=list(POLICIES), default="skill")
@@ -161,9 +160,9 @@ def main() -> None:
     env = DroneEnv(
         task=args.task,
         tools=True,
-        # the frames the reader and skill were trained on, upscaled for the video
-        width=AGENT_W,
-        height=AGENT_H,
+        # the frames the reader was trained on, the policies shrink them to their own size
+        width=FRAME[1],
+        height=FRAME[0],
         streams=("rgb", "depth", "mask") + (("chase",) if args.view == "chase" else ()),
         chase_size=(CHASE_W, CHASE_H),
         task_options={
@@ -190,6 +189,7 @@ def main() -> None:
     try:
         for i in range(args.episodes):
             obs, info = env.reset(seed=args.seed + i)
+            arena = env.client.arena()
             job = info["state"].get("job")
             runner.start(args.task, info, env.client.mask_ids)
             if not args.teacher and args.policy == "skill":
@@ -205,13 +205,13 @@ def main() -> None:
             # an arena can be done before its first step
             terminated, truncated = bool(info["episode"].get("done")), False
             while True:
-                ffmpeg.stdin.write(compose(obs, info, title, font).tobytes())
+                ffmpeg.stdin.write(compose(obs, info, arena, title, font).tobytes())
                 if terminated or truncated:
                     break
                 obs, reward, terminated, truncated, info = env.step(runner.act(info["state"], obs))
             # hold the last frame for a second so the outcome is readable
             for _ in range(FPS):
-                ffmpeg.stdin.write(compose(obs, info, title, font).tobytes())
+                ffmpeg.stdin.write(compose(obs, info, arena, title, font).tobytes())
             summary.append(outcome(info["episode"]))
             print(f"episode {i + 1}: {summary[-1]} in {info['episode']['step']} steps", flush=True)
     finally:

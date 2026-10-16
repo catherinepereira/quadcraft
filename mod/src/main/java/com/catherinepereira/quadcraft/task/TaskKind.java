@@ -1,11 +1,6 @@
 package com.catherinepereira.quadcraft.task;
 
 public enum TaskKind {
-	NAVIGATE_TO("navigate_to"),
-	DIG_BLOCK("dig_block"),
-	PLACE_BLOCK("place_block"),
-	CHEST_TRANSFER("chest_transfer"),
-	MINE_AND_DELIVER("mine_and_deliver"),
 	REPLICATE_BUILD("replicate_build"),
 	COPY_REGION("copy_region"),
 	BUILD_SCHEMATIC("build_schematic"),

@@ -65,7 +65,7 @@ class FakeBridge:
                 "container": None,
                 "breaking": None,
             },
-            episode={"id": "fake", "task": "navigate_to", "step": self.step_count, "reward": 0.1, "done": done, "success": dist < 1.5, "truncated": done and dist >= 1.5},
+            episode={"id": "fake", "task": "goto_point", "step": self.step_count, "reward": 0.1, "done": done, "success": dist < 1.5, "truncated": done and dist >= 1.5},
             action=None,
             reply_to=reply_to,
             rgb=np.full((self.height, self.width, 3), self.step_count % 255, dtype=np.uint8),

@@ -12,7 +12,7 @@ CMD ["npx", "vite", "--host", "0.0.0.0"]
 
 FROM python:3.11-slim AS train
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir torch==2.14.0 --index-url https://download.pytorch.org/whl/cu126
+RUN pip install --no-cache-dir torch==2.14.0 torchvision==0.29.0 --index-url https://download.pytorch.org/whl/cu126
 WORKDIR /repo/training
 COPY training/pyproject.toml ./
 COPY training/src src

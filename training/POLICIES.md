@@ -18,9 +18,9 @@ Optional settings on the spec: `streams` (what the env sends, default rgb, depth
 
 Data lives in `data/policies/<policy>/<run>/<seed>.npz`, one file per episode with one row per step. A run folder's name starts with its task, and training draws each task's rows in proportion to the square root of its row count, so 6000-step hunts don't crowd 600-step builds out of the batches. Checkpoints default to `checkpoints/<policy>.pt`, reports go next to them as `.json`.
 
-Policies only read what a real drone would have: the camera, depth, the drone's own pose and motion, its inventory, its range sensors, and the job it was given. Never `state["arena"]` or `state["marker"]`. The teacher follows the same rule: it knows only what its perception core built from the drone's own frames, see How the drone works in the training README.
+Policies only read what a real drone would have: the camera, depth, the drone's own pose and motion, its inventory, its range sensors, and the job it was given. The state carries nothing else, the true arena layout only reaches scoring and debugging tools through the bridge's `arena` request. The teacher follows the same rule: it knows only what its perception core built from the drone's own frames, see How the drone works in the training README.
 
-goto and the cell skill are pilots: each flies the goal its teacher names each step (the teacher's `intent`) and doesn't pick goals. In the brain the same planners name the goals and these policies fly them, so what they learn here is what flies the player's jobs. navigate and seq fly whole tasks on their own.
+goto and the cell skill are pilots: each flies the goal its teacher names each step (the teacher's `intent`) and doesn't pick goals. In the brain the same planners name the goals and these policies fly them, so what they learn here is what flies the player's jobs. seq flies whole builds on its own.
 
 ## Writing a policy
 
@@ -36,7 +36,7 @@ class HoverSpec(PolicySpec):
     def record(self, step: Step) -> dict[str, np.ndarray]:
         return {
             "depth": quantize_depth(step.obs["depth"]),
-            "state": state_vector(step.state, include_marker=False)[:6],
+            "state": state_vector(step.state),
             "move": np.asarray(step.label["move"], dtype=np.float32),
         }
 
@@ -51,7 +51,7 @@ class HoverSpec(PolicySpec):
 ```
 
 2. Add it to `POLICIES` in `framework/registry.py`.
-3. Give it a teacher. Override `teacher()` when no existing expert does the job, and write the expert in `src/drone_model/scripted/` on top of `Planner`, which reads the drone's perception core (`perception/core.py`): the voxel memory, world map, and mob tracker built from its own frames.
+3. Give it a teacher. Override `teacher()` when no job planner does the job, and write the planner in `src/drone_model/scripted/` on top of `Planner`, which reads the drone's perception core (`perception/core.py`): the voxel memory, world map, and mob tracker built from its own frames.
 4. Add a training arena when no task exercises the behavior: a `TaskKind`, a case in `TrainingArenas.placeTask`, metrics in `ArenaRecord`, and scoring in `TaskScorer`, see `docs/PROTOCOL.md`.
 5. `tests/test_framework.py` runs every registered policy through record, loss, and act on a made-up step, run it with `pytest`.
 
@@ -59,17 +59,17 @@ class HoverSpec(PolicySpec):
 
 ```powershell
 # 1. data: the teacher flies with flight noise and labels each step with its clean action (DART)
-.venv\Scripts\python -m drone_model.framework.collect --policy hover --task navigate_to --episodes 100
+.venv\Scripts\python -m drone_model.framework.collect --policy hover --task goto_point --episodes 100
 # 2. behavior cloning, the best checkpoint by validation loss lands in checkpoints/hover.pt
 .venv\Scripts\python -m drone_model.framework.train --policy hover
 # 3. DAgger: the policy flies half the steps, the teacher still labels every one, then train again on all of it
-.venv\Scripts\python -m drone_model.framework.collect --policy hover --task navigate_to --episodes 50 --dagger checkpoints\hover.pt
+.venv\Scripts\python -m drone_model.framework.collect --policy hover --task goto_point --episodes 50 --dagger checkpoints\hover.pt
 .venv\Scripts\python -m drone_model.framework.train --policy hover --init checkpoints\hover.pt
 # 4. success rate on evaluation seeds, and the teacher alone for comparison
-.venv\Scripts\python -m drone_model.framework.evaluate --policy hover --task navigate_to
-.venv\Scripts\python -m drone_model.framework.evaluate --policy hover --task navigate_to --teacher
+.venv\Scripts\python -m drone_model.framework.evaluate --policy hover --task goto_point
+.venv\Scripts\python -m drone_model.framework.evaluate --policy hover --task goto_point --teacher
 # 5. an MP4 into ../../claudevids
-.venv\Scripts\python -m drone_model.evaluate.video --policy hover --task navigate_to
+.venv\Scripts\python -m drone_model.evaluate.video --policy hover --task goto_point
 ```
 
 Notes:
@@ -80,23 +80,12 @@ Notes:
 - Seeds: collection from 300000 by default, evaluation from 100000. Keep runs on separate seed ranges so no evaluation arena was trained on.
 - Episodes split into training and validation by file, so validation never sees a frame from a training episode.
 - `--recordings <task>` turns episodes the mod recorded with expert labels (`collect.demos`) into rows, for policies trained on recordings.
-- `framework.ppo` fine-tunes the navigate policy with PPO in the live game. It's specific to policies with a continuous action head and one image encoder.
 
 ## Perception models
 
-The block reader (`perception/reader.py`), the first stage of the perception core, is trained separately because it learns from the mod's label streams, not from a teacher's actions. `collect.studio` captures studio frames of every block and mob, labeled from the `state` and `mask` streams, and `train.reader` learns per-pixel block classes from the state stream and mob classes from the mask stream. `--init` starts from an older reader, classes it didn't have start fresh.
+The block reader (`perception/reader.py`), the first stage of the perception core, is trained separately because it learns from the mod's label streams, not from a teacher's actions. `collect.render` draws studio frames of every block with a model offline on the GPU, labeled by the renderer itself. `collect.studio` captures game frames of the mobs and the blocks the renderer can't draw, labeled from the `state` and `mask` streams, plus a few scenes of every other block for validation. `train.reader` learns per-pixel classes from both and validates on game frames. Without `--init` the encoder starts from torchvision's ImageNet weights and learns at a tenth of the decoder's rate. `--init` starts from an older reader of the same architecture, classes it didn't have start fresh.
 
 ## How each policy was trained
-
-### navigate (`checkpoints/navigate.pt`)
-
-The CNN in `policies/navigate.py` flies navigate_to from RGB, depth, velocity, and heading.
-
-1. Behavior cloning on 150 expert demos in an open arena (`archive/bc.pt`), 30 epochs, batch 128, learning rate 1e-3, validation loss 0.021. 95% success with no pillars, 40% with 8.
-2. Behavior cloning again on those plus 250 demos with 8 pillars, 40 epochs (`archive/bc2.pt`). 100% with 8 pillars, 98% with 16.
-3. PPO from `archive/bc2.pt` on 16 pillars, 30 updates of 1024 steps, critic only for the first 2, an anchor to the BC policy fading to 0 (`navigate.pt`, a copy in `archive/ppo.pt`). 98% with 16 pillars and half the collisions.
-
-These demos came from an earlier expert that read the marker position, before the experts switched to perception only. `framework.collect --recordings navigate_to` turns them into framework rows.
 
 ### seq (`checkpoints/seq.pt`)
 
@@ -139,5 +128,8 @@ On its own it matches the planner: 100% on cave goto_point, flat and rough find_
 3. v3: 10000 steps from v2 (`--init`) on 81600 frames from 447 episodes, adding hunt and patrol arenas with the `<hostile>` and `<passive>` mob classes labeled from the mask stream, pixel accuracy 98.0%, mean IoU 0.884.
 4. v4: 8000 steps from v3 with frames from 110 find_block episodes (`scripts\collect_reader.ps1 -Set find`), mean IoU 0.890.
 5. v5 and v5b: one class per mob kind in place of hostile and passive, 10000 steps from v4 and 10000 more with 90 hunts from arenas that pick their own prey, mean IoU 0.853.
+6. v8: 1,303 classes on studio frames at 160x120, the U-Net from v7's weights, mean IoU 0.175.
+7. v9: a ResNet-34 encoder from ImageNet weights on the same frames, 50000 steps, mean IoU 0.239. Not promoted.
+8. v10: a ConvNeXt-Tiny encoder at 320x240, on rendered frames of 50 scenes per block and game frames of 40 scenes per mob, 60000 steps, mean IoU 0.362 on game frames. The live reader, v5b is in `archive/`.
 
 Results for every run are in [RESULTS.md](RESULTS.md).

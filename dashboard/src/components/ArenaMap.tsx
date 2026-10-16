@@ -1,4 +1,4 @@
-import type { DroneState, Vec3 } from "../protocol";
+import type { Arena, DroneState, Vec3 } from "../protocol";
 import { BLOCK_COLORS } from "../blockColors";
 import { Card } from "./ui";
 
@@ -56,11 +56,16 @@ function BlueprintLayers({
 }
 
 /**
- * Top-down view of the arena for debugging. It draws the true layout, which the drone itself never reads,
- * plus the geofence the drone does know
+ * Top-down view of the arena for debugging. It draws the true layout, which the dashboard asks the bridge for and the
+ * drone never reads, plus the geofence the drone does know
  */
-export function ArenaMap({ state }: { state: DroneState | undefined }) {
-  const arena = state?.arena;
+export function ArenaMap({
+  state,
+  arena,
+}: {
+  state: DroneState | undefined;
+  arena: Arena | null;
+}) {
   if (!arena || !state?.pos) {
     return (
       <Card title="Arena">

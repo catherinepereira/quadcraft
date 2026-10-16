@@ -129,7 +129,7 @@ class DroneClient:
 
     def reset(self, seed: int | None = None, timeout: float | None = None, **options: Any) -> Observation:
         """
-        options: task (navigate_to, dig_block, place_block, chest_transfer, mine_and_deliver, replicate_build), radius, obstacles, targets, maxSteps,
+        options: task (a training arena such as goto_point or replicate_build, or a job), radius, obstacles, targets, maxSteps,
         and fleet, {"group", "size", "member"}, to share one arena with the other drones of the group.
         A fleet reset answers once every drone of the group has asked, timeout covers that wait
         """
@@ -152,6 +152,15 @@ class DroneClient:
         msg_id = next(self._ids)
         self._send({"type": "view", "id": msg_id, "pose": pose})
         return self._wait_obs(msg_id)
+
+    def arena(self) -> dict[str, Any] | None:
+        """
+        The true layout of the drone's arena, for scoring, data collection, and debug views. A drone's state never carries
+        it, and nothing that flies the drone may ask for it
+        """
+        msg_id = next(self._ids)
+        self._send({"type": "arena", "id": msg_id})
+        return self._wait_text("arena", reply_to=msg_id).get("arena")
 
     def act(self, action: dict[str, Any]) -> None:
         self._send({"type": "act", "action": action})

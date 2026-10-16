@@ -303,9 +303,6 @@ public final class DroneTools {
 		JsonObject e = event("place", "block", BuiltInRegistries.BLOCK.getKey(blockItem.getBlock()).toString());
 		e.add("pos", Json.pos(target));
 		events.add(e);
-		if (record != null && record.goal != null && !target.equals(record.goal)) {
-			record.wrongPlacements++;
-		}
 	}
 
 	/** Why the drone may not change the block at pos: a safe region, or a player's job that works somewhere else */

@@ -20,21 +20,24 @@ from PIL import Image
 
 from ..paths import CHECKPOINTS, DATA
 from ..perception.reader import CLASSES, MOB_SET, OTHER, SKY, BlockReader
-from ..torch_utils import pick_device, split_episodes
-from ..train.reader import load_frames
+from ..torch_utils import pick_device
+from ..train.reader import load_frames, split_frames
 
 # a region smaller than this is a few pixels of edge, too small to crop or average
 MIN_PIXELS = 24
 THUMB = 64
 # frames per forward pass, the logits over 1303 classes take 100 MB a frame
-BATCH = 8
+BATCH = 4
+# training shards scanned for regions besides every validation shard, reading them all takes far longer
+SCAN_TRAIN = 10
 
 
-def candidates(shards: list[dict]) -> dict[int, list[tuple[int, int]]]:
-    """(shard, frame) pairs for every class with a big enough region there"""
+def candidates(shards: list[dict], scan: list[int]) -> dict[int, list[tuple[int, int]]]:
+    """(shard, frame) pairs for every class with a big enough region there, in the shards scan names"""
     n_cls = len(CLASSES)
     out: dict[int, list[tuple[int, int]]] = defaultdict(list)
-    for e, ep in enumerate(shards):
+    for e in scan:
+        ep = shards[e]
         for start in range(0, len(ep["cls"]), 256):
             cls = np.asarray(ep["cls"][start : start + 256]).reshape(-1, ep["cls"].shape[1] * ep["cls"].shape[2]).astype(np.int64)
             counts = np.bincount((cls + np.arange(len(cls))[:, None] * n_cls).ravel(), minlength=len(cls) * n_cls).reshape(len(cls), n_cls)
@@ -88,20 +91,21 @@ def layout(features: np.ndarray, dims: int, seed: int) -> np.ndarray:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=Path, default=CHECKPOINTS / "reader.pt")
-    parser.add_argument("--data", type=Path, default=DATA / "studio")
+    parser.add_argument("--data", type=Path, nargs="+", default=[DATA / "studio", DATA / "render"])
     parser.add_argument("--dest", type=Path, required=True)
     parser.add_argument("--blocks-per-class", type=int, default=12)
     parser.add_argument("--mobs-per-class", type=int, default=40)
     parser.add_argument("--seed", type=int, default=0, help="the training run's seed, which picks its validation shards")
     args = parser.parse_args()
 
-    shards = load_frames(args.data)
-    _, val_ids = split_episodes(range(len(shards)), 0.1, np.random.default_rng(args.seed))
-    val = set(val_ids)
-    found = candidates(shards)
-    print(f"{sum(len(v) for v in found.values())} regions over {len(found)} classes", flush=True)
-
+    shards = load_frames([d for d in args.data if d.exists()])
+    _, val_shards = split_frames(shards, np.random.default_rng(args.seed))
+    val = {i for i, s in enumerate(shards) if any(s["shard"] == v["shard"] for v in val_shards)}
     rng = np.random.default_rng(args.seed)
+    rest = [i for i in range(len(shards)) if i not in val]
+    scan = sorted(val | {int(i) for i in rng.choice(rest, min(len(rest), SCAN_TRAIN), replace=False)})
+    found = candidates(shards, scan)
+    print(f"{sum(len(v) for v in found.values())} regions over {len(found)} classes", flush=True)
     groups = {"blocks": [], "mobs": []}
     for c, regions in sorted(found.items()):
         is_mob = CLASSES[c] in MOB_SET
@@ -112,8 +116,6 @@ def main() -> None:
     saved = torch.load(args.checkpoint, map_location=device, weights_only=True)
     model = BlockReader().to(device).eval()
     model.load_state_dict(saved["model"])
-    features = {}
-    model.dec1.register_forward_hook(lambda _m, _i, out: features.__setitem__("d1", out))
 
     for group, picks in groups.items():
         by_frame = defaultdict(list)
@@ -129,10 +131,10 @@ def main() -> None:
                 batch = frames[start : start + BATCH]
                 rgb = np.stack([np.asarray(shards[e]["rgb"][n]) for e, n in batch])
                 depth = np.stack([np.asarray(shards[e]["depth"][n]).astype(np.float32) for e, n in batch])
-                logits, _ = model(torch.from_numpy(rgb).to(device), torch.from_numpy(depth).to(device))
+                d1 = model.features(torch.from_numpy(rgb).to(device), torch.from_numpy(depth).to(device)).float()
+                logits = model.classes(d1)
                 probs = logits.float().softmax(1)
                 guess = probs.argmax(1)
-                d1 = features["d1"].float()
                 for b, (e, n) in enumerate(batch):
                     cls = torch.from_numpy(np.asarray(shards[e]["cls"][n]).astype(np.int64)).to(device)
                     for i, c in by_frame[(e, n)]:

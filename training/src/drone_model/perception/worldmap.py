@@ -2,8 +2,7 @@
 The free space the drone flies through, part of its perception core (perception.core). Each frame's depth and
 semantic mask are back-projected into world points. A hit below the camera raises that column's known floor, a hit
 above it lowers the column's known ceiling, and a ray that crosses a cell shows it empty. Other drones block their
-column for a few frames, they move. Which block fills each cell is the voxel memory's (perception.memory).
-Nothing here reads the arena layout
+column for a few frames, they move. Which block fills each cell is the voxel memory's (perception.memory)
 """
 
 from __future__ import annotations
@@ -13,8 +12,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# privileged fields an expert must never read
-HIDDEN_STATE = ("arena", "marker")
 CLEARANCE = 0.55
 PIXEL_STRIDE = 2
 # a column blocks the planner when its top is above the drone's feet by more than this
@@ -30,10 +27,6 @@ DRONE_SPAN = 1.5
 def drone_mask_id(mask_ids: dict) -> int:
     """The mask stream's id for a drone, entities come after the blocks"""
     return mask_ids["entityBase"] + mask_ids["entities"].index("quadcraft:drone")
-
-
-def perceivable(state: dict) -> dict:
-    return {k: v for k, v in state.items() if k not in HIDDEN_STATE}
 
 
 class WorldMap:
@@ -57,7 +50,7 @@ class WorldMap:
         # the task's geofence as x0, y0, z0, x1, y1, z1, the planner treats everything outside as blocked
         self.fence: list[float] | None = None
 
-    # planner interface, see expert.plan and expert.waypoint
+    # the grid scripted.route plans over
     @property
     def boxes(self) -> list:
         return [c for c in self.heights.keys() | self.ceilings.keys() | self.drones.keys() if self.blocked(c)]
@@ -178,16 +171,21 @@ class View:
     points: np.ndarray  # (N, 3) float, where each ray hit
 
 
-def backproject(state: dict, depth: np.ndarray, depth_max: float, valid: np.ndarray | None = None, stride: int = PIXEL_STRIDE) -> View:
-    """Every stride-th pixel with depth under depth_max (and valid, when given) as the block it shows"""
-    cam = state["camera"]
+def camera_axes(state: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The camera's eye position and its forward, right, and up unit vectors"""
     pos = state["pos"]
-    eye = np.array([pos[0], pos[1] + cam["eyeHeight"], pos[2]])
+    eye = np.array([pos[0], pos[1] + state["camera"]["eyeHeight"], pos[2]])
     yaw = math.radians(state["yaw"])
     pitch = math.radians(state.get("pitch", 0.0))
     forward = np.array([-math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch)])
     right = np.array([-math.cos(yaw), 0.0, -math.sin(yaw)])
-    up = np.cross(right, forward)
+    return eye, forward, right, np.cross(right, forward)
+
+
+def backproject(state: dict, depth: np.ndarray, depth_max: float, valid: np.ndarray | None = None, stride: int = PIXEL_STRIDE) -> View:
+    """Every stride-th pixel with depth under depth_max (and valid, when given) as the block it shows"""
+    cam = state["camera"]
+    eye, forward, right, up = camera_axes(state)
 
     h, w = depth.shape
     out_aspect = w / h
@@ -217,13 +215,7 @@ def backproject(state: dict, depth: np.ndarray, depth_max: float, valid: np.ndar
 def project(state: dict, point, shape: tuple[int, int]) -> tuple[int, int, float] | None:
     """The pixel row and column a world point lands on and its depth along the camera axis, None when out of view"""
     cam = state["camera"]
-    pos = state["pos"]
-    eye = np.array([pos[0], pos[1] + cam["eyeHeight"], pos[2]])
-    yaw = math.radians(state["yaw"])
-    pitch = math.radians(state.get("pitch", 0.0))
-    forward = np.array([-math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch)])
-    right = np.array([-math.cos(yaw), 0.0, -math.sin(yaw)])
-    up = np.cross(right, forward)
+    eye, forward, right, up = camera_axes(state)
     h, w = shape
     out_aspect = w / h
     tan_y = math.tan(math.radians(cam["fov"]) / 2)

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, Pill } from "./ui";
 
 // keep in step with training/src/drone_model (brain.py, scripted/, policies/) and training/RESULTS.md
-const AS_OF = "2026-10-09";
+const AS_OF = "2026-10-15";
 
 interface Stage {
   id: string;
@@ -32,8 +32,8 @@ const LOOP: Stage[] = [
     kind: "learned",
     summary: "Labels every pixel",
     detail: [
-      "A segmentation network that labels each pixel as one of about 40 block kinds or 9 mob kinds (zombie, husk, skeleton, creeper, cow, pig, sheep, chicken, villager).",
-      "Depth turns each labeled pixel into a 3D point. Reader v5b scores a mean IoU of 0.853, chickens read worst at 0.30.",
+      "A segmentation network, a ConvNeXt-Tiny encoder pretrained on ImageNet with a U-Net decoder, that labels each 320x240 frame's pixels as one of 1,303 classes: every block a camera can show and every kind of mob.",
+      "Depth turns each labeled pixel into a 3D point. It trains on studio frames, a scene of each block and mob shot from random angles: blocks rendered offline on the GPU from the game's models and textures, mobs and chest-like blocks captured in the game. Reader v10 reads 59% of held-out block subjects and 80% of mobs right in game frames.",
     ],
   },
   {
@@ -164,7 +164,7 @@ const POLICIES = [
     name: "Block reader",
     file: "checkpoints/reader.pt",
     flies: "Perception for every job",
-    status: "v5b, mean IoU 0.853",
+    status: "v10 (ConvNeXt-Tiny, 320x240) reached mean IoU 0.362 on game frames, up from v9's 0.239",
   },
 ];
 
@@ -291,8 +291,9 @@ export function SystemView() {
       <Card title="How a policy is trained">
         <Flow stages={TRAINING} />
         <p className="text-text-muted mt-3 text-sm">
-          The block reader trains on its own from the arenas' ground-truth
-          labels (scripts/collect_reader.ps1, train/reader.py).
+          The block reader trains on its own from studio frames, rendered
+          offline for blocks (collect/render.py) and labeled by the mod for mobs
+          (collect/studio.py, train/reader.py).
         </p>
       </Card>
 

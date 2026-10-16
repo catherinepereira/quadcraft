@@ -36,12 +36,10 @@ public final class Config {
 	public float maxLookPerTick = 15.0F;
 	public int resetSettleTicks = 10;
 	public int autoResetTicks = 20;
-	public String task = "navigate_to";
+	public String task = "goto_point";
 	public String terrain = "flat";
 	public int radius = 12;
-	public int maxSteps = 400;
 	public int obstacles = 0;
-	public float successDist = 1.5F;
 	public float collisionPenalty = 0.05F;
 	// geofence: the arena footprint from its floor up to the cleared height, widened by boundsPadding blocks
 	public int boundsPadding = 0;
@@ -129,7 +127,6 @@ public final class Config {
 		this.chaseHeight = Math.clamp(this.chaseHeight, 16, 1080);
 		this.streamHz = Math.clamp(this.streamHz, 1, 20);
 		this.radius = Math.clamp(this.radius, 4, 48);
-		this.maxSteps = Math.clamp(this.maxSteps, 10, 100000);
 		this.sensorRange = Math.clamp(this.sensorRange, 0.5F, 16.0F);
 		// at 0 the drone could never turn
 		this.turnSmoothing = Math.clamp(this.turnSmoothing, 0.05F, 1.0F);

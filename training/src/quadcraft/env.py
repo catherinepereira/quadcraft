@@ -17,7 +17,6 @@ MAX_LOOK = 15.0
 # seconds a fleet reset may wait for the group's other drones to finish their episodes
 FLEET_WAIT = 3600.0
 STATE_DIM = 6
-MARKER_DIM = 3
 INVENTORY_SLOTS = 27
 # a double chest, the largest container the drone opens
 CONTAINER_SLOTS = 54
@@ -28,14 +27,14 @@ class DroneEnv(gym.Env):
     """
     One Quadcraft task as a Gymnasium env.
 
-    Without tools (the navigate_to default) the action is a float vector in [-1, 1]: forward, right, up, yaw, pitch,
+    Without tools the action is a float vector in [-1, 1]: forward, right, up, yaw, pitch,
     with yaw and pitch scaled by 15 degrees per tick.
     With tools the action is a dict: "move" (that vector), "tool" (index into protocol.TOOLS), "slot" (selected
     inventory slot), and "transfer" ([kind, slot] with kind 0 none, 1 drone to container, 2 container to drone).
     An optional "block" names the block to place, the drone then uses whichever slot holds it.
 
-    Observations hold the configured image streams and a state vector: velocity (3), sin and cos of yaw, pitch / 90,
-    and with hide_marker=False the marker offset (3). With tools they add "inventory" (27 x [item index, count]),
+    Observations hold the configured image streams and a state vector: velocity (3), sin and cos of yaw, and pitch / 90.
+    With tools they add "inventory" (27 x [item index, count]),
     "container" (54 x [item index, count], zeros when closed), and "tool_state" ([mining progress, container open,
     selected slot / 26]). Item indices come from the mod's item table in DroneClient.item_ids
     """
@@ -49,10 +48,9 @@ class DroneEnv(gym.Env):
         width: int = 160,
         height: int = 120,
         streams: tuple[str, ...] = ("rgb", "depth"),
-        task: str = "navigate_to",
-        tools: bool | None = None,
+        task: str = "goto_point",
+        tools: bool = True,
         ticks_per_step: int = 1,
-        hide_marker: bool = True,
         task_options: dict[str, Any] | None = None,
         depth_max: float = 64.0,
         record: bool | Literal["test"] = False,
@@ -72,9 +70,8 @@ class DroneEnv(gym.Env):
         self.height = height
         self.streams = tuple(streams)
         self.task = task
-        self.tools = task != "navigate_to" if tools is None else tools
+        self.tools = tools
         self.ticks_per_step = ticks_per_step
-        self.hide_marker = hide_marker
         self.task_options = task_options or {}
         self.depth_max = depth_max
         self.record = record
@@ -112,8 +109,7 @@ class DroneEnv(gym.Env):
             obs_spaces["block_states"] = spaces.Box(0, 65535, shape=(height, width), dtype=np.uint16)
         if "chase" in self.streams:
             obs_spaces["chase"] = spaces.Box(0, 255, shape=(chase_size[1], chase_size[0], 3), dtype=np.uint8)
-        state_dim = STATE_DIM + (0 if hide_marker else MARKER_DIM)
-        obs_spaces["state"] = spaces.Box(-np.inf, np.inf, shape=(state_dim,), dtype=np.float32)
+        obs_spaces["state"] = spaces.Box(-np.inf, np.inf, shape=(STATE_DIM,), dtype=np.float32)
         # position inside the geofence, -1 to 1 per axis, beyond that is out of bounds
         obs_spaces["bounds"] = spaces.Box(-np.inf, np.inf, shape=(3,), dtype=np.float32)
         # the range sensors ahead and below as a share of their reach, 1 when nothing is in range
@@ -202,7 +198,7 @@ class DroneEnv(gym.Env):
             out["block_states"] = obs.block_states
         if "chase" in self.streams:
             out["chase"] = obs.chase
-        out["state"] = state_vector(obs.state, include_marker=not self.hide_marker)
+        out["state"] = state_vector(obs.state)
         out["bounds"] = bounds_vector(obs.state)
         out["range"] = range_vector(obs.state)
         if self.tools:
@@ -242,12 +238,7 @@ def bounds_vector(state: dict[str, Any]) -> np.ndarray:
     return np.asarray([(pos[i] - box[i]) / (box[i + 3] - box[i]) * 2 - 1 for i in range(3)], dtype=np.float32)
 
 
-def state_vector(state: dict[str, Any], include_marker: bool) -> np.ndarray:
+def state_vector(state: dict[str, Any]) -> np.ndarray:
     vel = state.get("vel", [0.0, 0.0, 0.0])
     yaw = math.radians(state.get("yaw", 0.0))
-    values = [*vel, math.sin(yaw), math.cos(yaw), state.get("pitch", 0.0) / 90.0]
-    if include_marker:
-        marker = state.get("marker") or [0, 0, 0]
-        pos = state.get("pos", [0.0, 0.0, 0.0])
-        values += [marker[i] + 0.5 - pos[i] for i in range(3)]
-    return np.asarray(values, dtype=np.float32)
+    return np.asarray([*vel, math.sin(yaw), math.cos(yaw), state.get("pitch", 0.0) / 90.0], dtype=np.float32)

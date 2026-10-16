@@ -39,7 +39,7 @@ def test_env_passes_gymnasium_checker():
 
 def test_tool_env_passes_checker_and_maps_actions():
     with FakeBridge() as bridge:
-        env = DroneEnv(host=HOST, port=bridge.port, width=32, height=24, task="dig_block")
+        env = DroneEnv(host=HOST, port=bridge.port, width=32, height=24, task="find_block")
         try:
             check_env(env, skip_render_check=True)
             obs, _ = env.reset(seed=0)
@@ -54,10 +54,10 @@ def test_tool_env_passes_checker_and_maps_actions():
 
 def test_env_episode_ends_on_success():
     with FakeBridge() as bridge:
-        env = DroneEnv(host=HOST, port=bridge.port, width=32, height=24, hide_marker=False)
+        env = DroneEnv(host=HOST, port=bridge.port, width=32, height=24, tools=False)
         try:
             obs, info = env.reset(seed=0)
-            assert obs["state"].shape == (9,)
+            assert obs["state"].shape == (6,)
             terminated = truncated = False
             for _ in range(60):
                 obs, reward, terminated, truncated, info = env.step(np.array([1, 0, 0, 0, 0], dtype=np.float32))

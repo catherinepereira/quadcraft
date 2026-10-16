@@ -15,7 +15,7 @@ import numpy as np
 from ..energy import dock_intent
 from ..perception.memory import AIR, MIN_VOTES, base_name
 from ..perception.reader import CLASSES, INDEX
-from .arena import HarvestExpert, make_expert
+from .harvest import HarvestExpert
 from .goto import GotoPlanner
 from .patrol import PatrolPlanner
 from .base import SURVEY_LIMIT, TOP_LEAN, TOP_VIA_HEIGHT, VIA_DIST, Planner, center, tool_action
@@ -31,7 +31,7 @@ CARRIED_SHARE = 0.25
 RIPE_AGE = {"minecraft:beetroots": 3}
 # a mining job digs a block if at least this share of its reads said the job's block, even when most said something else
 DOUBT_SHARE = 0.15
-# trenches two wide every four blocks leave two-wide walls, so every block of a dug box has a face in a trench.
+# trenches two wide every four blocks leave two-wide walls, so every block of a dug box has a face in a trench
 # Two wide because the drone needs more than a block of room to fly down one
 TRENCH_WIDTH = 2
 MAX_STRIKES = 3
@@ -747,10 +747,10 @@ class DockPlanner(Planner):
 
 
 def episode_expert(task: str, job: dict | None, mask_ids: dict, reader, schematics: Path | None = None, core=None) -> Planner:
-    """The job planner for an episode that hands the drone a job, else the task's expert"""
-    if job:
-        return make_planner(job, mask_ids, reader, schematics, core=core)
-    return make_expert(task, mask_ids, reader=reader, core=core)
+    """The job planner for an episode, every task with a teacher hands the drone a job"""
+    if not job:
+        raise ValueError(f"{task} hands the drone no job, there is no planner for it")
+    return make_planner(job, mask_ids, reader, schematics, core=core)
 
 
 def make_planner(job: dict, mask_ids: dict, reader, schematics: Path | None = None, core=None) -> Planner:

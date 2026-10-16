@@ -16,7 +16,7 @@ from quadcraft import DroneEnv
 
 from ..framework.evaluate import EVAL_SEED, Runner, outcome
 from ..paths import CHECKPOINTS
-from ..perception.reader import Reader
+from ..perception.reader import FRAME, Reader
 
 # turns slower than this, in degrees per step, don't count as reversing
 REVERSAL_RATE = 1.0
@@ -53,7 +53,7 @@ def main() -> None:
 
     runner = Runner(args.policy, args.checkpoint, args.teacher, Reader(CHECKPOINTS / "reader.pt"))
     options = {"obstacles": args.obstacles, "terrain": args.terrain, "size": 5, "perception": "vision", "maxSteps": args.max_steps}
-    env = DroneEnv(task=args.task, tools=True, streams=runner.spec.streams, action_pause_ms=0, task_options=options)
+    env = DroneEnv(task=args.task, tools=True, streams=runner.spec.streams, action_pause_ms=0, width=FRAME[1], height=FRAME[0], task_options=options)
     rows = []
     saved = None
     try:

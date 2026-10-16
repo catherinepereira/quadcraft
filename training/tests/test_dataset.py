@@ -7,10 +7,10 @@ from quadcraft import action_array, iter_transitions, list_episodes
 
 
 def write_episode(root, name, steps=3, width=8, height=6):
-    ep = root / "navigate_to" / name
+    ep = root / "goto_point" / name
     for sub in ("rgb", "depth", "mask"):
         (ep / sub).mkdir(parents=True)
-    meta = {"id": name, "task": "navigate_to", "width": width, "height": height, "outcome": "success"}
+    meta = {"id": name, "task": "goto_point", "width": width, "height": height, "outcome": "success"}
     (ep / "meta.json").write_text(json.dumps(meta))
     rows = []
     for n in range(steps):
@@ -24,7 +24,7 @@ def write_episode(root, name, steps=3, width=8, height=6):
 
 def test_transitions_skip_terminal_and_load_streams(tmp_path):
     write_episode(tmp_path, "a")
-    episodes = list_episodes(tmp_path)
+    episodes = list_episodes(tmp_path, "goto_point")
     assert len(episodes) == 1
     samples = list(iter_transitions(episodes, streams=("rgb", "depth", "mask")))
     assert len(samples) == 2

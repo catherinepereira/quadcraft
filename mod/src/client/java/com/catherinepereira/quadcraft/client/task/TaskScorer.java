@@ -27,12 +27,11 @@ public final class TaskScorer {
 
 	private boolean active;
 	private String episodeId;
-	private TaskKind kind = TaskKind.NAVIGATE_TO;
+	private TaskKind kind = TaskKind.GOTO_POINT;
 	private long seed;
 	private BlockPos marker = BlockPos.ZERO;
 	private JsonObject arena = new JsonObject();
 	private int maxSteps;
-	private double successDist;
 	private double collisionPenalty;
 	private int step;
 	private int collisions;
@@ -75,7 +74,7 @@ public final class TaskScorer {
 	private double prevBandGap = -1;
 
 	public void begin(
-		String episodeId, TaskKind kind, long seed, BlockPos marker, JsonObject arena, int maxSteps, double successDist, double collisionPenalty,
+		String episodeId, TaskKind kind, long seed, BlockPos marker, JsonObject arena, int maxSteps, double collisionPenalty,
 		int boundsPadding, double outOfBoundsPenalty, double damagePenalty, double jitterPenalty
 	) {
 		JsonArray origin = arena.getAsJsonArray("origin");
@@ -108,7 +107,6 @@ public final class TaskScorer {
 		this.marker = marker;
 		this.arena = arena;
 		this.maxSteps = maxSteps;
-		this.successDist = successDist;
 		this.collisionPenalty = collisionPenalty;
 		this.step = 0;
 		this.collisions = 0;
@@ -243,10 +241,6 @@ public final class TaskScorer {
 		return this.kind;
 	}
 
-	public BlockPos marker() {
-		return this.marker;
-	}
-
 	public JsonObject arena() {
 		return this.arena;
 	}
@@ -281,7 +275,7 @@ public final class TaskScorer {
 			return;
 		}
 		Vec3 target = this.currentGoal(droneCenter, isTarget);
-		boolean reaching = this.kind == TaskKind.NAVIGATE_TO || this.point != null || this.kind == TaskKind.FIND_BLOCK || this.kind == TaskKind.SEEK_BLOCK;
+		boolean reaching = this.point != null || this.kind == TaskKind.FIND_BLOCK || this.kind == TaskKind.SEEK_BLOCK;
 		if (target != null) {
 			double standoff = reaching ? 0 : TOOL_STANDOFF;
 			double dist = Math.max(0, droneCenter.distanceTo(target) - standoff);
@@ -291,11 +285,7 @@ public final class TaskScorer {
 			this.goal = target;
 			this.prevDist = dist;
 		}
-		if (this.kind == TaskKind.NAVIGATE_TO && target != null && droneCenter.distanceTo(target) <= this.successDist) {
-			this.succeed();
-			reward += SUCCESS_BONUS;
-		}
-		if (reaching && this.kind != TaskKind.NAVIGATE_TO && target != null && droneCenter.distanceTo(target) <= this.arrive) {
+		if (reaching && target != null && droneCenter.distanceTo(target) <= this.arrive) {
 			this.succeed();
 			reward += SUCCESS_BONUS;
 		}
@@ -313,7 +303,7 @@ public final class TaskScorer {
 
 	/** Reward from world progress the server reports, see ArenaRecord.metrics for the layout */
 	public void applyMetrics(int[] next) {
-		if (!this.active || this.done() || this.kind == TaskKind.NAVIGATE_TO) {
+		if (!this.active || this.done()) {
 			this.metrics = next;
 			return;
 		}
@@ -321,26 +311,6 @@ public final class TaskScorer {
 		double reward = 0;
 		boolean won = false;
 		switch (this.kind) {
-			case DIG_BLOCK -> {
-				reward += 10.0 * (prev[0] - next[0]);
-				won = next[0] == 0;
-			}
-			case PLACE_BLOCK -> {
-				reward -= 1.0 * (next[1] - prev[1]);
-				won = next[0] == 1;
-			}
-			case CHEST_TRANSFER -> {
-				double total = Math.max(1, next[1]);
-				reward += 10.0 * (next[0] - prev[0]) / total;
-				reward += 2.0 * Math.max(0, next[2] - prev[2]) / total;
-				won = next[0] >= next[1];
-			}
-			case MINE_AND_DELIVER -> {
-				double required = Math.max(1, next[2]);
-				reward += 3.0 * (prev[0] - next[0]);
-				reward += 5.0 * (next[1] - prev[1]) / required;
-				won = next[1] >= next[2];
-			}
 			case HARVEST_CROPS, HARVEST_REGION -> {
 				// a harvested cell empties until it is replanted, so harvesting and replanting together earn the most
 				reward += 5.0 * (prev[0] - next[0]) / Math.max(1, next[2]);
@@ -437,20 +407,8 @@ public final class TaskScorer {
 
 	private @Nullable Vec3 currentGoal(Vec3 drone, Predicate<BlockPos> isTarget) {
 		return switch (this.kind) {
-			case NAVIGATE_TO -> Vec3.atCenterOf(this.marker);
 			// the marker is the station, the drone docks on its top
 			case RETURN_HOME -> Vec3.atCenterOf(this.marker.above());
-			case DIG_BLOCK -> this.nearestTarget(drone, isTarget);
-			case PLACE_BLOCK -> point("goal");
-			case CHEST_TRANSFER -> {
-				boolean carrying = this.metrics.length >= 3 && this.metrics[2] > 0;
-				yield carrying ? point("targetChest") : point("sourceChest");
-			}
-			case MINE_AND_DELIVER -> {
-				boolean loaded = this.metrics.length >= 4 && (this.metrics[0] == 0 || this.metrics[3] + this.metrics[1] >= this.metrics[2]);
-				Vec3 next = loaded ? null : this.nearestTarget(drone, isTarget);
-				yield next != null ? next : point("targetChest");
-			}
 			// no distance shaping, the drone has to study the reference before heading to the build site, or find what it hunts
 			case REPLICATE_BUILD, COPY_REGION, BUILD_SCHEMATIC, MINE_REGION, HARVEST_CROPS, HARVEST_REGION, COPY_BUILD, SCHEMATIC_BUILD, MINE_DEPOSIT, GATHER_BUILD,
 				PATROL_AREA, HUNT_MOBS, PATROL_REGION, GUARD_REGION -> null;
@@ -480,10 +438,6 @@ public final class TaskScorer {
 			}
 		}
 		return best;
-	}
-
-	private @Nullable Vec3 point(String key) {
-		return this.arena.has(key) ? Vec3.atCenterOf(Json.readPos(this.arena.getAsJsonArray(key))) : null;
 	}
 
 	public JsonObject snapshot() {

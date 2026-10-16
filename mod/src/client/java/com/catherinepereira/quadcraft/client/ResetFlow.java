@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  */
 final class ResetFlow {
 	private record Pending(
-		int requestId, TaskKind kind, long seed, int radius, int obstacles, int targets, int maxSteps, float successDist, @Nullable Session session,
+		int requestId, TaskKind kind, long seed, int radius, int obstacles, int targets, int maxSteps, @Nullable Session session,
 		@Nullable Integer replyId, @Nullable JsonObject fleet
 	) {
 	}
@@ -66,16 +66,15 @@ final class ResetFlow {
 			return e.getMessage();
 		}
 		int radius = options.has("radius") ? options.get("radius").getAsInt() : config.radius;
-		int targets = options.has("targets") ? options.get("targets").getAsInt() : kind == TaskKind.MINE_AND_DELIVER ? 3 : kind == TaskKind.HUNT_MOBS ? 4 : 1;
+		int targets = options.has("targets") ? options.get("targets").getAsInt() : kind == TaskKind.HUNT_MOBS ? 4 : 1;
 		String terrain = options.has("terrain") ? options.get("terrain").getAsString() : config.terrain;
 		int obstacles = options.has("obstacles") ? options.get("obstacles").getAsInt() : config.obstacles;
 		int size = options.has("size") ? options.get("size").getAsInt() : 5;
 		boolean scan = "scan".equals(options.has("perception") ? options.get("perception").getAsString() : config.perception);
-		int maxSteps = options.has("maxSteps") ? options.get("maxSteps").getAsInt() : JobOptions.defaultMaxSteps(kind, config.maxSteps);
-		float successDist = options.has("successDist") ? options.get("successDist").getAsFloat() : config.successDist;
+		int maxSteps = options.has("maxSteps") ? options.get("maxSteps").getAsInt() : JobOptions.defaultMaxSteps(kind);
 		String tier = options.has("tier") ? options.get("tier").getAsString() : "";
 		JsonObject fleet = options.has("fleet") && options.get("fleet").isJsonObject() ? options.getAsJsonObject("fleet") : null;
-		this.pending = new Pending(++requestSeq, kind, seed, radius, obstacles, targets, maxSteps, successDist, session, replyId, fleet);
+		this.pending = new Pending(++requestSeq, kind, seed, radius, obstacles, targets, maxSteps, session, replyId, fleet);
 		this.ready = null;
 		if (this.run == this.runtime.active()) {
 			this.runtime.cancelAutoReset();
@@ -167,7 +166,7 @@ final class ResetFlow {
 		String id = kind.id + "-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + "-" + String.format("%04d", ++episodeCounter);
 		JsonObject arena = JsonParser.parseString(ready.arena()).getAsJsonObject();
 		this.run.task.begin(
-			id, kind, pending.seed(), ready.marker(), arena, pending.maxSteps(), pending.successDist(), config.collisionPenalty, config.boundsPadding,
+			id, kind, pending.seed(), ready.marker(), arena, pending.maxSteps(), config.collisionPenalty, config.boundsPadding,
 			config.outOfBoundsPenalty, config.damagePenalty, config.jitterPenalty
 		);
 		this.run.tools.reset();
@@ -213,7 +212,6 @@ final class ResetFlow {
 		options.addProperty("targets", pending.targets());
 		options.addProperty("terrain", arena.has("terrain") ? arena.get("terrain").getAsString() : "flat");
 		options.addProperty("maxSteps", pending.maxSteps());
-		options.addProperty("successDist", pending.successDist());
 		meta.add("options", options);
 		meta.addProperty("width", config.width);
 		meta.addProperty("height", config.height);

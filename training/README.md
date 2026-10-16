@@ -6,8 +6,8 @@ Two Python packages. `quadcraft` is the client for the mod's bridge: a Gymnasium
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cu126
-.venv\Scripts\pip install -e ".[dev]"
+.venv\Scripts\pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+.venv\Scripts\pip install -e ".[dev,render]"
 ```
 
 Collection, evaluation, and videos need the game running with the mod and a world open, for example `scripts\minecraft.ps1 -Arena` from the repo root.
@@ -21,10 +21,10 @@ src/drone_model/energy.py     learned job costs, and the battery keeper that fli
 src/drone_model/labels.py     expert labels beside recorded episodes, and DART flight noise
 src/drone_model/torch_utils.py device, mixed precision, checkpoints, episode splits, run reports
 src/drone_model/paths.py      checkpoint, data, report, schematic, and video folders
-src/drone_model/perception/   the perception core: block reader U-Net, voxel memory, world map, mob tracker
-src/drone_model/scripted/     planners: the shared Planner (search, A*, scripted controller), job planners, arena experts
-src/drone_model/framework/    every policy's collection, training, evaluation, and PPO, see POLICIES.md
-src/drone_model/policies/     navigate CNN, sequence policy, learned cell skill, each a framework spec
+src/drone_model/perception/   the perception core: block reader, voxel memory, world map, mob tracker
+src/drone_model/scripted/     planners: the shared Planner (search, the scripted controller), A* routes, job planners
+src/drone_model/framework/    every policy's collection, training, and evaluation, see POLICIES.md
+src/drone_model/policies/     goto policy, learned cell skill, sequence policy, each a framework spec
 src/drone_model/train/        block reader training
 src/drone_model/collect/      recorded expert demos through the mod, for the block reader and recordings
 src/drone_model/evaluate/     reader accuracy, MP4s
@@ -51,7 +51,7 @@ Three layers, each reading the one below:
 | Planner | `scripted/` | Reads the core and names one goal at a time: look at a point from a viewpoint, break or place a block, hold the beam on a mob, go somewhere. Hand-written, one per kind of job. |
 | Pilot | `policies/` | A learned policy that flies the goal from the camera image, depth, and the drone's motion. The scripted controller in `Planner` flies it instead with `--scripted`, and labels every step when training. |
 
-Planners and pilots never keep maps of their own and never read the arena layout, `state["arena"]` and `state["marker"]` are left out before anything sees the state.
+Planners and pilots never keep maps of their own. The state carries no arena layout, and what the crosshair rests on comes from the frame's depth and the reader's class at its middle (`DroneCore.aim`).
 
 ## Client (`quadcraft`)
 
@@ -78,7 +78,7 @@ env.close()
 
 `record=True` saves episodes to the training data, `record="test"` to the game's `quadcraft/test-recordings` for runs that shouldn't train anything. Recording stops when the env closes.
 
-For navigate_to the env action is `[forward, right, up, yaw, pitch]` in [-1, 1], with yaw and pitch scaled to 15 degrees per tick. With `tools=True` (the tool tasks, and every framework run) the action is a dict: `move` (that vector), `tool` (index into `quadcraft.protocol.TOOLS`, `attack` holds the beam), `slot`, and `transfer` (`[kind, slot]`, kind 1 stores a drone stack in the open container, 2 takes one out). An optional `block`, such as `"minecraft:bricks"`, names the block to place, and the drone uses whichever slot holds it.
+The env's action is a dict: `move` (`[forward, right, up, yaw, pitch]` in [-1, 1], with yaw and pitch scaled to 15 degrees per tick), `tool` (index into `quadcraft.protocol.TOOLS`, `attack` holds the beam), `slot`, and `transfer` (`[kind, slot]`, kind 1 stores a drone stack in the open container, 2 takes one out). An optional `block`, such as `"minecraft:bricks"`, names the block to place, and the drone uses whichever slot holds it.
 
 Observations hold the image streams, a 6-value state vector (velocity, sin and cos of yaw, pitch), `bounds`, the drone's position inside the geofence from -1 to 1 per axis, and `range`, the range sensors ahead and below as a share of their reach (1 when nothing is in range). Tool tasks add `inventory` and `container` as `[item index, count]` per slot (indices into `DroneClient.item_ids`) and `tool_state` (mining progress, container open, selected slot). Pass `hide_marker=False` to append the marker offset to the state vector, for debugging only.
 
@@ -112,7 +112,7 @@ for sample in iter_transitions(episodes):
 
 `DroneCore` (`perception/core.py`) is everything the drone knows about the world:
 
-- The block reader (`perception/reader.py`), a small U-Net that labels each pixel of the camera image and depth as one of 1303 classes and says whether a crop is ripe. The classes are every block a camera can show and every kind of mob, from the game's registry (`perception/classes.json`, built by `perception/classes.py`). Blocks that look exactly like another, such as infested stone or waxed copper, are read as that block. Without a reader the core reads the mod's mask stream, which is ground truth.
+- The block reader (`perception/reader.py`), a ConvNeXt-Tiny encoder pretrained on ImageNet with a U-Net decoder, depth as a fourth input channel, that labels each pixel of the 320x240 camera image and depth as one of 1303 classes and says whether a crop is ripe. The classes are every block a camera can show and every kind of mob, from the game's registry (`perception/classes.json`, built by `perception/classes.py`). Blocks that look exactly like another, such as infested stone or waxed copper, are read as that block. Without a reader the core reads the mod's mask stream, which is ground truth.
 - The voxel memory (`perception/memory.py`): the labels are back-projected through depth into cells, each cell keeps class and ripeness votes, the class with the most votes is what the drone believes is there, and break and place events update it at once. Planners ask it for a box's blocks, for every cell of a block kind (`cells_of`), or whether a cell is solid, which comes from the game's collision shapes. Every update reports the cells that changed, which the dashboard's Drone memory panel shows.
 - The world map (`perception/worldmap.py`): the free space to fly through. A hit below the camera raises its column's known floor, a hit above lowers the known ceiling, a ray that crosses a cell shows it empty, and another drone seen near the flying height blocks its column for 15 frames. A climb that stalls marks a ceiling over the drone.
 - The mob tracker (`perception/mobs.py`): mob pixels back-projected through depth and grouped into mobs, one kind at a time. Hits in cells the memory has as solid are left out first, the reader's mob outline spilling onto the ground or a misread block. Each mob keeps its identity from frame to frame and the kind it was read as most, and goes once the camera looks at its spot and sees past it or reads a block there, or the memory comes to show its cells solid.
@@ -121,22 +121,26 @@ for sample in iter_transitions(episodes):
 The brain keeps one core per drone for as long as it flies the drone, so a job starts out knowing everything earlier jobs saw. Training arenas and evaluations make a fresh core for each episode, every arena is a new world.
 
 ```powershell
-.venv\Scripts\python -m drone_model.collect.studio                          # studio frames of every block and mob, data/studio
-.venv\Scripts\python -m drone_model.train.reader --init checkpoints\reader.pt   # checkpoints/reader.pt, --gpu-share 0.4 keeps the GPU 60% idle for a game
+.venv\Scripts\python -m drone_model.collect.render                          # rendered studio frames of every block with a model, data/render
+.venv\Scripts\python -m drone_model.collect.studio                          # game studio frames of mobs and the blocks the renderer can't draw, data/studio
+.venv\Scripts\python -m drone_model.train.reader --out checkpoints\reader.pt   # from ImageNet weights, --gpu-share 0.4 keeps the GPU 60% idle for a game
 .venv\Scripts\python -m drone_model.evaluate.reader --episodes 10          # a core with the reader reads reference builds, scored cell by cell
 .venv\Scripts\python -m drone_model.evaluate.embeddings --checkpoint checkpoints\reader.pt --dest ..\..\quadcraft-embeddings\public\data
 ```
 
+`scripts\reader_run.ps1 -Version v10` runs the whole chain unattended: it launches the held game, collects, closes the game, trains to `checkpoints\reader-v10.pt`, and exports embeddings, with logs in `logs\`. `-CollectOnly` stops once the game is closed, `-TrainOnly` skips the game and collection.
+
 The last command exports region embeddings for the explorer in `Developer/quadcraft-embeddings`: the decoder features that feed the class head, averaged over each block or mob region in a frame, with a crop of it, and laid out with UMAP in 2D and 3D.
 
-The reader trains on studio frames. For every block and mob the mod stages a small scene, the subject with random neighbors, ground, walls, light, and time of day, and picks camera poses around it at random angles and distances. The collector captures a frame from each pose and labels it from the mod's `state` stream for blocks and the `mask` stream's entity ids for mobs. Every block gets the same number of views and every mob four times as many. It writes training arrays straight to shards in `data/studio`, each tagged with the class list it was labeled for, and a stopped run picks up at the first unfinished shard. The reader needs neither stream to run. With the game running, `python -m drone_model.perception.classes` rebuilds the class list after a game update.
+The reader trains on studio frames. For every block and mob the mod stages a small scene, the subject with random neighbors, ground, walls, light, and time of day, and picks camera poses around it at random angles and distances. The collector captures a frame from each pose and labels it from the mod's `state` stream for blocks and the `mask` stream's entity ids for mobs. By default it stages 40 scenes of every mob, 20 of every block the offline renderer can't draw, and 2 of every other block, each with up to 8 views. It writes training arrays straight to shards in `data/studio`, each tagged with the class list it was labeled for and the frame size, and a stopped run picks up at the first unfinished shard.
+
+Most block frames come from `collect.render` instead, which draws studio scenes on the GPU without the game, at about 70 frames a second with 3 workers against about 10 from the game, each worker stages and meshes scenes on the CPU, so more workers go faster. `drone_model.render` reads block models, textures, and colormaps from the game's client jar in Loom's cache and copies the game's look: biome tints, smooth lighting and ambient occlusion over flooded sky and block light, the lightmap shader, animated texture frames, cutout and translucent blocks, water and lava, and a frame drawn at twice the size and box-filtered down. Labels come from each model element's box, close to the outline shapes the mod's raycasts hit, and depth is z-depth as the mod measures it. Scenes follow `task/Studio.java`'s staging on flat, rough, or cave terrain with plants and trees around. Blocks with their own renderers (chests, heads, banners, shulker boxes, decorated pots) have no model elements, so they and the mobs come from the game. The default is 50 scenes of each of the 1134 blocks it draws, 4 views each, about 227000 frames and 140 GB in `data/render`, and `--preview 12` writes a sheet of frames beside their labels. Training reads both folders, holds out a tenth of the game shards for validation, and trains on every rendered shard. It leaves out shards of another class list or size. The class loss reads a random quarter of each frame's pixels, since full-size logits over 1303 classes don't fit in memory. Batch 8 keeps training near 7.5 GB, leaving room for the 3 GB the desktop uses on a 12 GB card. The reader needs neither stream to run. With the game running, `python -m drone_model.perception.classes` rebuilds the class list after a game update.
 
 ## Planners
 
 `Planner` (`scripted/base.py`) is what every planner shares. Each step it passes the frame to the core, then its subclass names the next goal from the core's memory, map, and mobs. Until it knows where to go it turns on the spot and then searches a grid of points inside the geofence, nearest first. It plans around tall columns and low ceilings with A*, travels at cruise height under any known ceiling, and its scripted controller flies the goal. With a pilot attached the pilot flies it instead, and the scripted controller still runs so the planner's own state moves on as it did when it taught the pilot.
 
-- Job planners (`scripted/jobs.py`, `patrol.py`, `goto.py`) run the player's jobs and every arena that hands the drone a job, see Jobs below.
-- Arena experts (`scripted/arena.py`) teach the older arena tasks with no job: navigate_to, dig_block, place_block, chest_transfer, mine_and_deliver. dig_block and mine_and_deliver mine every coal ore in the memory, mine_and_deliver drops coal in a chest whenever it has some and no known ore is left. chest_transfer opens the chests it finds and learns which one is stocked from what is inside. place_block aims at the pad's top face from above so hills don't block the view.
+- Job planners (`scripted/jobs.py`, `harvest.py`, `patrol.py`, `goto.py`) run the player's jobs and every arena that hands the drone a job, see Jobs below.
 
 When the crosshair shows a remembered block isn't there, or something keeps blocking the view, a planner gives the block up or climbs for a steeper look.
 
@@ -144,15 +148,12 @@ Collection flies the planner's goal plus Gaussian noise but stores the clean scr
 
 ## Policies
 
-Every learned policy (the navigate CNN, the sequence policy, the cell skill) goes through `drone_model.framework`, see [POLICIES.md](POLICIES.md). PPO starts the navigate actor from a BC checkpoint, trains only the critic for the first two updates, and adds a loss pulling the actor's mean toward the BC policy that fades to zero by the last update. BatchNorm statistics stay at their BC values.
+Every learned policy (the goto policy, the cell skill, the sequence policy) goes through `drone_model.framework`, see [POLICIES.md](POLICIES.md).
 
 ```powershell
-.venv\Scripts\python -m drone_model.framework.collect --policy navigate --task navigate_to --episodes 250 --obstacles 8
-.venv\Scripts\python -m drone_model.framework.train --policy navigate                                # checkpoints/navigate.pt
-.venv\Scripts\python -m drone_model.framework.ppo --obstacles 16                                     # checkpoints/navigate-ppo.pt
-.venv\Scripts\python -m drone_model.framework.evaluate --policy navigate --episodes 50 --obstacles 16
-.venv\Scripts\python -m drone_model.framework.evaluate --policy skill --task chest_transfer --teacher --terrain rough
-.venv\Scripts\python -m drone_model.evaluate.video --policy skill --teacher --task dig_block --terrain rough   # MP4 into ../../claudevids
+.venv\Scripts\python -m drone_model.framework.evaluate --policy goto --task find_block --terrain rough --episodes 10
+.venv\Scripts\python -m drone_model.framework.evaluate --policy skill --task hunt_mobs --teacher
+.venv\Scripts\python -m drone_model.evaluate.video --policy goto --task find_block --terrain rough   # MP4 into ../../claudevids
 .venv\Scripts\python -m drone_model.evaluate.video --policy skill --teacher --task gather_build --size 4 --scan
 ```
 
@@ -206,12 +207,12 @@ $env:QUADCRAFT_E2E = "1"; .venv\Scripts\python -m pytest tests\test_e2e.py   # a
 ## Known limitations
 
 - The cell skill is evaluated on flat terrain only, and on copies no larger than 5 wide.
-- The reader's mob classes cover zombies, husks, skeletons, creepers, cows, pigs, sheep, chickens, and villagers only, other mobs read as whatever they look closest to.
+- The reader has a class for every block a camera can show and every mob kind, small or far subjects read worst (see RESULTS.md, reader v10).
 - Hunts keep the world running in lockstep, mobs have to move, so a hunt's episodes don't replay the same from a seed.
 - Vision harvest jobs sometimes leave a plot unplanted.
 - A harvest arena's count of ripe crops at the start varies between runs of the same seed (22, 20, and 15 for seed 100000), so harvest results aren't comparable run to run.
 - Copy jobs in vision read only what the survey views show. A cell hidden inside a solid build reads as air.
-- Copy and mine jobs in vision work with the blocks the reader knows (about 40 classes). Build jobs and scanned jobs place any block.
+- Copy and mine jobs in vision haven't been rechecked since the reader grew to every block. Build jobs and scanned jobs place any block.
 - Mine jobs and gathering dig open trenches or shafts from the top, the drone doesn't fly through enclosed tunnels.
 - Vision copies of 60 or more blocks still miss a few from the reader's misreads.
 - The planners know the drone's own pose exactly, the way a drone with good onboard positioning would.

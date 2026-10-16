@@ -30,7 +30,7 @@ from .scripted.goto import GotoPlanner
 from .scripted.jobs import DockPlanner, make_planner
 from .framework.evaluate import outcome, prey_killed
 from .perception.core import DroneCore
-from .perception.reader import Reader
+from .perception.reader import FRAME, Reader
 from .policies.goto import GotoAgent
 from .policies.skill import SkillAgent
 from .torch_utils import write_report
@@ -120,7 +120,7 @@ def fly(drone: int, name: str, reader: Reader, args, energy: EnergyModel) -> Non
     Flies one drone's jobs as its controller, one after another while its queue continues them, and lets the drone go
     once no new job has started for IDLE_SECONDS
     """
-    env = DroneEnv(tools=True, streams=("rgb", "depth"), drone=drone)
+    env = DroneEnv(tools=True, streams=("rgb", "depth"), width=FRAME[1], height=FRAME[0], drone=drone)
     last = None
     core = None
     try:
@@ -215,7 +215,7 @@ def evaluate_fleet(reader: Reader, args, energy: EnergyModel) -> None:
     group = f"brain-{datetime.now():%Y%m%d-%H%M%S}"
 
     def work(member: int) -> None:
-        env = DroneEnv(task=tasks[member], drone=drones[member], tools=True, streams=("rgb", "depth"), action_pause_ms=0, task_options=arena_options(args))
+        env = DroneEnv(task=tasks[member], drone=drones[member], tools=True, streams=("rgb", "depth"), width=FRAME[1], height=FRAME[0], action_pause_ms=0, task_options=arena_options(args))
         try:
             evaluate(env, reader, args, energy, tasks[member], {"group": group, "size": len(tasks), "member": member})
         finally:
@@ -259,7 +259,7 @@ def main() -> None:
         # the player's action pause stays on for jobs they start
         watch(reader, args, EnergyModel())
         return
-    env = DroneEnv(task=args.task, tools=True, streams=("rgb", "depth"), action_pause_ms=0, task_options=arena_options(args))
+    env = DroneEnv(task=args.task, tools=True, streams=("rgb", "depth"), width=FRAME[1], height=FRAME[0], action_pause_ms=0, task_options=arena_options(args))
     try:
         evaluate(env, reader, args, EnergyModel(path=None), args.task)
     finally:

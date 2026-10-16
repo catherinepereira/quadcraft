@@ -17,8 +17,7 @@ from quadcraft import DroneEnv
 
 from ..paths import CHECKPOINTS, REPORTS
 from ..perception.core import DroneCore
-from ..perception.reader import Reader
-from ..perception.worldmap import perceivable
+from ..perception.reader import FRAME, Reader
 from ..scripted.jobs import episode_expert
 
 EVAL_SEED = 100_000
@@ -33,7 +32,7 @@ def main() -> None:
     args = parser.parse_args()
 
     reader = Reader(args.checkpoint)
-    env = DroneEnv(task="replicate_build", tools=True, streams=("rgb", "depth", "mask"), action_pause_ms=0, task_options={"obstacles": args.obstacles, "terrain": args.terrain})
+    env = DroneEnv(task="replicate_build", tools=True, streams=("rgb", "depth", "mask"), width=FRAME[1], height=FRAME[0], action_pause_ms=0, task_options={"obstacles": args.obstacles, "terrain": args.terrain})
     results = []
     try:
         for i in range(args.episodes):
@@ -42,14 +41,15 @@ def main() -> None:
             expert = episode_expert("replicate_build", info["state"]["job"], env.client.mask_ids, None)
             core = DroneCore(env.client.mask_ids, reader=reader)
             memory = core.memory
-            arena = info["state"]["arena"]
+            # the true layout scores the read, the core never sees it
+            arena = env.client.arena()
             rx, ry, rz = arena["referenceBase"]
             lo, hi = (rx - 1, ry + 1, rz - 1), (rx + 1, ry + 3, rz + 1)
             truth = {(rx + c["offset"][0], ry + c["offset"][1], rz + c["offset"][2]): c["block"] for c in arena["blueprint"]}
             focus = [lo[0] - 1, ry, lo[2] - 1, hi[0] + 1, hi[1], hi[2] + 1]
             snapshot = []
             while expert.plan is None:
-                core.see(perceivable(info["state"]), obs)
+                core.see(info["state"], obs)
                 env.client.publish_memory(memory.step, [c.to_json() for c in core.changes], snapshot=snapshot if memory.step == 1 else None, focus=focus)
                 obs, _, terminated, truncated, info = env.step(expert.act(info["state"], obs))
                 if terminated or truncated:

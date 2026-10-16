@@ -31,10 +31,11 @@ def http(method, path, body=None, origin=None):
         return resp.read()
 
 
-def steer(state_vec):
-    """Scripted policy from the marker offset in the state vector, only used to check the plumbing"""
-    _, _, _, sin_yaw, cos_yaw, _, dx, dy, dz = state_vec
-    yaw = math.degrees(math.atan2(sin_yaw, cos_yaw))
+def steer(state, point):
+    """Scripted flight to the goto job's point, only to check the plumbing"""
+    pos = state["pos"]
+    dx, dy, dz = point[0] + 0.5 - pos[0], point[1] + 0.5 - pos[1], point[2] + 0.5 - pos[2]
+    yaw = state["yaw"]
     target = math.degrees(math.atan2(-dx, dz))
     err = (target - yaw + 180) % 360 - 180
     forward = min(1.0, math.hypot(dx, dz) / 2) if abs(err) < 30 else 0.0
@@ -49,28 +50,29 @@ def signal_done():
         Path(done).write_text("done")
 
 
-def test_env_reaches_marker_and_records():
-    # steer reads the marker, so the episode goes to the test folder, which the API serves until the env closes
-    env = DroneEnv(hide_marker=False, streams=("rgb", "depth", "mask"), record="test")
+def test_env_reaches_point_and_records():
+    # scripted test flights go to the test folder, which the API serves until the env closes
+    env = DroneEnv(task="goto_point", tools=False, streams=("rgb", "depth", "mask"), record="test")
     try:
         obs, info = env.reset(seed=11)
+        point = info["state"]["job"]["point"]
         assert obs["rgb"].shape == (120, 160, 3)
         assert obs["rgb"].std() > 5
         assert (obs["mask"] > 0).any()
         terminated = truncated = False
         steps = 0
         while not (terminated or truncated):
-            obs, reward, terminated, truncated, info = env.step(steer(obs["state"]))
+            obs, reward, terminated, truncated, info = env.step(steer(info["state"], point))
             steps += 1
         assert terminated, info
         episode_id = info["episode"]["id"]
 
         time.sleep(1.0)
-        detail = json.loads(http("GET", f"/api/episodes/navigate_to/{episode_id}"))
+        detail = json.loads(http("GET", f"/api/episodes/goto_point/{episode_id}"))
         assert detail["meta"]["outcome"] == "success"
         assert detail["meta"]["client"] == "quadcraft-env"
         assert len(detail["steps"]) == steps + 1
-        frame = decode_obs(http("GET", f"/api/episodes/navigate_to/{episode_id}/frame/0"))
+        frame = decode_obs(http("GET", f"/api/episodes/goto_point/{episode_id}/frame/0"))
         assert frame.rgb.shape == (120, 160, 3)
         assert frame.mask is not None and frame.depth is not None
     finally:
@@ -129,7 +131,7 @@ def test_http_status_config_and_origin_guard():
 def test_fleet_shares_one_arena_and_waits_for_every_drone():
     drones = [d["id"] for d in json.loads(http("GET", "/api/status"))["drones"]][:2]
     assert len(drones) == 2, "the held world needs two drones"
-    tasks = ["navigate_to", "dig_block"]
+    tasks = ["goto_point", "find_block"]
     envs = [DroneEnv(task=task, drone=drone, tools=True) for task, drone in zip(tasks, drones)]
     infos: dict[int, dict] = {}
     group = f"e2e-{time.time()}"
@@ -145,7 +147,7 @@ def test_fleet_shares_one_arena_and_waits_for_every_drone():
         threads[0].start()
         for t in threads:
             t.join(timeout=60)
-        arenas = [infos[m]["state"]["arena"] for m in range(2)]
+        arenas = [env.client.arena() for env in envs]
         assert arenas[0]["origin"] == arenas[1]["origin"] and [a["task"] for a in arenas] == tasks
         assert {infos[m]["state"]["droneId"] for m in range(2)} == set(drones)
         for env in envs:

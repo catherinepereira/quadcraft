@@ -6,7 +6,7 @@ episodes the mod recorded with expert labels (collect.demos) into the same rows
 
     python -m drone_model.framework.collect --policy skill --task hunt_mobs --episodes 40
     python -m drone_model.framework.collect --policy skill --task hunt_mobs --dagger checkpoints/skill.pt
-    python -m drone_model.framework.collect --policy navigate --recordings navigate_to
+    python -m drone_model.framework.collect --policy skill --recordings replicate_build
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from quadcraft.dataset import action_array
 from .. import labels as expert_labels
 from ..scripted.base import TOOLS, tool_action
 from ..paths import CHECKPOINTS, DATA
-from ..perception.reader import Reader
+from ..perception.reader import FRAME, Reader
 from ..torch_utils import pick_device
 from .data import run_dir, save_episode
 from .evaluate import outcome
@@ -38,7 +38,7 @@ def collect(spec: PolicySpec, args, out: Path) -> None:
         options["maxSteps"] = args.max_steps
     if args.prey:
         options["prey"] = args.prey
-    env = DroneEnv(task=args.task, tools=True, streams=spec.streams, action_pause_ms=0, task_options=options)
+    env = DroneEnv(task=args.task, tools=True, streams=spec.streams, action_pause_ms=0, width=FRAME[1], height=FRAME[0], task_options=options)
     agent = None
     try:
         for i in range(args.episodes):
@@ -100,7 +100,7 @@ def from_recordings(spec: PolicySpec, task: str, out: Path, every_outcome: bool,
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", required=True)
-    parser.add_argument("--task", default="navigate_to")
+    parser.add_argument("--task", default="goto_point")
     parser.add_argument("--episodes", type=int, default=40)
     parser.add_argument("--seed", type=int, default=300_000, help="first env seed, evaluation uses 100000 and up")
     parser.add_argument("--terrain", choices=["flat", "rough", "cave"], default="flat")

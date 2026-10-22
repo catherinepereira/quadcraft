@@ -1,6 +1,6 @@
 """
-Collects a policy's training data. Its teacher flies the task with flight noise and labels every step with its clean
-action (DART, Laskey et al. 2017). With --dagger a trained policy flies a share of the steps and the teacher still labels
+Collects a policy's training data. Its teacher flies the task with flight noise, none while it uses a tool, and labels
+every step with its clean action (DART, Laskey et al. 2017). With --dagger a trained policy flies a share of the steps and the teacher still labels
 every one, so the data covers the states the policy gets itself into (DAgger, Ross et al. 2011). --recordings turns
 episodes the mod recorded with expert labels (collect.demos) into the same rows
 
@@ -60,6 +60,9 @@ def collect(spec: PolicySpec, args, out: Path) -> None:
                     rows.append(row)
                 if agent is not None and rng.random() < args.beta:
                     action = agent.act(step)
+                elif (teacher.intent or {}).get("mode") in TOOLS[1:]:
+                    # noise knocks the aim off a block being dug, which resets the dig, so a tool's hold flies clean
+                    action = label
                 else:
                     action = expert_labels.with_flight_noise(label, rng, args.noise)
                 if agent is not None:

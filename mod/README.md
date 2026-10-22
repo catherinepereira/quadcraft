@@ -120,7 +120,7 @@ Rows top to bottom, `_` is an empty slot.
 | guard_region | patrol a region and kill its prey in it, hostile mobs unless you name kinds, in your own world |
 | goto_point | fly to a point given as coordinates |
 | find_block | find the one block of a named kind among look-alikes and fly to it |
-| follow_mob | stay 2 to 5 blocks from a wandering villager |
+| follow_mob | stay 2 to 5 blocks from a wandering villager, the one nearest the drone or nearest a given point, among decoys |
 | dock_station | dock on a charging station placed in the arena, the drone's own home stays as it was |
 | studio | nothing to do, one block or mob named by `subject` with random neighbors and backdrop, and camera views of it for block reader frames |
 | fly_to | fly to the paste point, in your own world |

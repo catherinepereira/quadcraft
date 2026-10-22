@@ -60,7 +60,7 @@ public final class PlayerJobs {
 			case PATROL_REGION, GUARD_REGION -> PatrolJob.start(level, a, b, req.subject(), kind == TaskKind.GUARD_REGION, Prey.parse(req.prey()));
 			case FLY_TO -> GotoJob.point(dest);
 			case SEEK_BLOCK -> GotoJob.block(level, a, b, req.subject(), found);
-			case FOLLOW_PLAYER -> GotoJob.follow(player, 0);
+			case FOLLOW_PLAYER -> GotoJob.follow(player, 0, null);
 			default -> throw new IllegalArgumentException(kind.id + " is not a job");
 		};
 		if (r.length == 15) {

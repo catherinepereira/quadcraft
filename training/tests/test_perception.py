@@ -208,6 +208,28 @@ def test_planners_built_on_one_core_share_its_memory_map_and_mobs():
     assert goto.mobs is patrol.mobs is core.mobs
 
 
+def test_a_follow_picks_the_mob_nearest_its_point_or_the_drone_after_one_turn():
+    from drone_model.perception.mobs import Mob
+    from drone_model.scripted.goto import GotoPlanner
+
+    state = {"pos": [0.5, 3.0, 0.5]}
+    cow = MASK_IDS["entityBase"] + MASK_IDS["entities"].index("minecraft:cow")
+    near_drone, near_point = (Mob(np.array([3.0, 1.0, 0.0]), 0, {cow: 1}), Mob(np.array([12.0, 1.0, 12.0]), 0, {cow: 1}))
+    job = {"kind": "follow", "entity": "minecraft:cow", "near": 2.0, "far": 5.0}
+
+    planner = GotoPlanner(MASK_IDS)
+    planner.core.mobs.mobs = [near_point, near_drone]
+    assert planner.follow_mob(state, job) is None
+    planner.spin_left = 0
+    assert planner.follow_mob(state, job) == tuple(near_drone.pos)
+
+    planner = GotoPlanner(MASK_IDS)
+    planner.core.mobs.mobs = [near_drone]
+    assert planner.follow_mob(state, {**job, "at": [11, 1, 13]}) is None
+    planner.core.mobs.mobs = [near_drone, near_point]
+    assert planner.follow_mob(state, {**job, "at": [11, 1, 13]}) == tuple(near_point.pos)
+
+
 def test_a_ground_truth_frame_fills_the_memory_and_the_mob_tracker():
     from drone_model.perception.core import DroneCore
 

@@ -173,6 +173,7 @@ def main() -> None:
     parser.add_argument("--init", type=Path, default=None, help="start from a trained reader, classes it doesn't have start fresh, otherwise from ImageNet weights")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--gpu-share", type=float, default=1.0, help="the share of the time the GPU works, 0.4 leaves room for a game")
+    parser.add_argument("--baseline", type=Path, default=None, help="a trained reader to score on the same validation frames first, for comparison")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -181,6 +182,15 @@ def main() -> None:
     train, val = split_frames(load_frames([d for d in args.data if d.exists()]), rng)
     sources = ", ".join(f"{sum(e['source'] == s for e in train)} {s}" for s in sorted({e["source"] for e in train}))
     print(f"train {len(train)} shards ({sum(len(e['cls']) for e in train)} frames, {sources}), val {len(val)} {val[0]['source']} shards, device {device}", flush=True)
+
+    baseline = None
+    if args.baseline is not None:
+        reference = BlockReader(pretrained=False).to(device)
+        init_from(reference, args.baseline, device)
+        baseline = evaluate(reference, val, device, rng)
+        print(f"baseline {args.baseline.name} mean IoU {baseline['mean_iou']:.3f} ripe acc {baseline['ripe_acc']:.3f}", flush=True)
+        del reference
+        torch.cuda.empty_cache()
 
     model = BlockReader(pretrained=args.init is None).to(device)
     if args.init is not None:
@@ -223,7 +233,7 @@ def main() -> None:
                 f"ripe acc {metrics['ripe_acc']:.3f} {time.perf_counter() - start:.0f}s{gpu_peak(device)}{' saved' if saved else ''}",
                 flush=True,
             )
-    write_report(args.out.with_suffix(".json"), args, best=final, history=history)
+    write_report(args.out.with_suffix(".json"), args, best=final, history=history, baseline=baseline)
     worst = sorted(final["per_class_iou"].items(), key=lambda kv: kv[1])[:6]
     print(f"best mean IoU {best.best:.3f}, weakest classes: " + ", ".join(f"{n.split(':')[-1]} {v:.2f}" for n, v in worst))
 

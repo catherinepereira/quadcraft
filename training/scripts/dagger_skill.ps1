@@ -2,7 +2,8 @@
 # retrain, then episodes where that skill flies half the goal steps while the planner labels every step, and a final
 # retrain on all the skill data. -Tasks narrows the round to some of the runs, such as hunt_mobs,patrol_area, and
 # -SkipPlan starts from the first retrain, for a round whose planner episodes are already collected
-param([int]$Round = 1, [string]$Tasks = "", [switch]$SkipPlan)
+# -PlanOnly stops after the first retrain, leaving the DAgger half for a later -SkipPlan run
+param([int]$Round = 1, [string]$Tasks = "", [switch]$SkipPlan, [switch]$PlanOnly)
 $model = Split-Path $PSScriptRoot -Parent
 $python = Join-Path $model ".venv\Scripts\python.exe"
 $skill = Join-Path $model "checkpoints\skill.pt"
@@ -51,6 +52,7 @@ if (Test-Path $skill) { Copy-Item $skill (Join-Path $model "checkpoints\archive\
 if (-not $SkipPlan) { Collect $false 0 }
 Train
 Copy-Item $skill (Join-Path $model "checkpoints\archive\skill-r$Round-bc.pt")
+if ($PlanOnly) { "$(Get-Date -Format HH:mm:ss) done"; return }
 Collect $true 5000
 Train
 "$(Get-Date -Format HH:mm:ss) done"

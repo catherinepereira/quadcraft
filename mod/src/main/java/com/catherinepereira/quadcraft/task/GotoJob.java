@@ -37,20 +37,23 @@ public final class GotoJob implements DroneJob {
 	private final int target;
 	// the followed entity's kind, the drone finds a mob by it with its camera
 	private final @Nullable String entity;
+	// where to find the followed mob, the one of its kind nearest this point, or null for the one nearest the drone
+	private final @Nullable BlockPos at;
 	private final int ticks;
 
-	private GotoJob(Mode mode, BlockPos min, BlockPos max, @Nullable Block block, int target, @Nullable String entity, int ticks) {
+	private GotoJob(Mode mode, BlockPos min, BlockPos max, @Nullable Block block, int target, @Nullable String entity, @Nullable BlockPos at, int ticks) {
 		this.mode = mode;
 		this.min = min;
 		this.max = max;
 		this.block = block;
 		this.target = target;
 		this.entity = entity;
+		this.at = at;
 		this.ticks = ticks;
 	}
 
 	public static GotoJob point(BlockPos point) {
-		return new GotoJob(Mode.POINT, point, point, null, -1, null, 0);
+		return new GotoJob(Mode.POINT, point, point, null, -1, null, null, 0);
 	}
 
 	/** A block of the named kind somewhere in the box between a and b, with where they are for the client's scoring */
@@ -71,14 +74,17 @@ public final class GotoJob implements DroneJob {
 		if (found.isEmpty()) {
 			throw new IllegalArgumentException("there is no " + name + " in that region");
 		}
-		return new GotoJob(Mode.BLOCK, min, max, block, -1, null, 0);
+		return new GotoJob(Mode.BLOCK, min, max, block, -1, null, null, 0);
 	}
 
-	/** Follow target, for ticks ticks in the band or, with 0, until stopped */
-	public static GotoJob follow(Entity target, int ticks) {
-		BlockPos at = target.blockPosition();
+	/**
+	 * Follow target, for ticks ticks in the band or, with 0, until stopped.
+	 * The drone is told the target's kind and at, where to look for it, or with no at to take the one of that kind nearest itself
+	 */
+	public static GotoJob follow(Entity target, int ticks, @Nullable BlockPos at) {
+		BlockPos from = target.blockPosition();
 		String entity = BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()).toString();
-		return new GotoJob(Mode.FOLLOW, at.offset(-FOLLOW_REACH, -8, -FOLLOW_REACH), at.offset(FOLLOW_REACH, 24, FOLLOW_REACH), null, target.getId(), entity, ticks);
+		return new GotoJob(Mode.FOLLOW, from.offset(-FOLLOW_REACH, -8, -FOLLOW_REACH), from.offset(FOLLOW_REACH, 24, FOLLOW_REACH), null, target.getId(), entity, at, ticks);
 	}
 
 	/** Static targets in the arena record, see ArenaRecord.targets, the client scores the rest */
@@ -119,6 +125,9 @@ public final class GotoJob implements DroneJob {
 				json.addProperty("kind", "follow");
 				json.addProperty("target", this.target);
 				json.addProperty("entity", this.entity);
+				if (this.at != null) {
+					json.add("at", Json.pos(this.at));
+				}
 				json.addProperty("near", NEAR);
 				json.addProperty("far", FAR);
 				json.addProperty("ticks", this.ticks);

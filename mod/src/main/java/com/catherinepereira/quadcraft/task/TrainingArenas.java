@@ -22,6 +22,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.util.Unit;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.EntitySpawnReason;
@@ -71,6 +72,16 @@ public final class TrainingArenas {
 		Blocks.BRICKS, Blocks.WOOL.pick(DyeColor.BLUE), Blocks.WOOL.pick(DyeColor.RED), Blocks.COAL_ORE, Blocks.SANDSTONE, Blocks.TERRACOTTA, Blocks.COBBLESTONE, Blocks.SPRUCE_PLANKS
 	);
 	private static final int FIND_DECOYS = 3;
+	// follow_mob's villagers past the followed one, kept this far from it
+	private static final int FOLLOW_DECOYS = 2;
+	private static final double FOLLOW_DECOY_GAP = 7.0;
+	// a follow of the nearest villager starts the drone at least this much closer to it than to any decoy
+	private static final double NEAREST_MARGIN = 3.0;
+	// a follow at a point names one this far at most from the followed villager
+	private static final int AT_SPREAD = 2;
+	// the share of episodes that start facing away from the task's subject, out of frame
+	private static final double FACE_AWAY = 0.5;
+	private static final float FACE_AWAY_SPREAD = 60.0F;
 
 	private TrainingArenas() {
 	}
@@ -205,6 +216,10 @@ public final class TrainingArenas {
 		int start = keyPoints.size();
 		int targets = Math.clamp(req.targets(), 1, 8);
 		List<ItemStack> stock = null;
+		// what the drone has to find, when it isn't the first key point
+		Vec3 subject = null;
+		// spots the drone must start farther from than from subject
+		List<Vec3> farther = List.of();
 
 		switch (kind) {
 			case REPLICATE_BUILD -> {
@@ -322,17 +337,34 @@ public final class TrainingArenas {
 				);
 			}
 			case FOLLOW_MOB -> {
-				// a villager wandering inside the arena's wall stands in for a player
+				// villagers wandering inside the arena's wall stand in for players
+				// The job names the followed one's kind and either a point near it ("at") or nothing, for the one nearest the drone
+				// ("nearest"), subject picks which, empty for either
 				keyPoints.add(new Vec3(ox + 0.5, terrain.ground(ox, oz) + 1.5, oz + 0.5));
 				wallIn(level, terrain, origin, radius);
-				Mob villager = EntityTypes.VILLAGER.create(level, EntitySpawnReason.EVENT);
-				BlockPos cell = freeCell(rng, record, keyPoints, terrain, 1, 3.0);
-				villager.snapTo(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5, rng.nextFloat() * 360.0F, 0.0F);
-				villager.setPersistenceRequired();
-				villager.addTag(ARENA_TAG);
-				level.addFreshEntity(villager);
-				keyPoints.add(Vec3.atCenterOf(cell));
-				record.job = GotoJob.follow(villager, GotoJob.FOLLOW_TICKS);
+				boolean at = req.subject().isEmpty() ? rng.nextBoolean() : req.subject().equals("at");
+				List<Vec3> villagers = new ArrayList<>();
+				Mob followed = null;
+				for (int i = 0; i <= FOLLOW_DECOYS; i++) {
+					Mob villager = EntityTypes.VILLAGER.create(level, EntitySpawnReason.EVENT);
+					BlockPos cell = freeCell(rng, record, keyPoints, terrain, 1, i == 0 ? 3.0 : FOLLOW_DECOY_GAP);
+					villager.snapTo(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5, rng.nextFloat() * 360.0F, 0.0F);
+					villager.setPersistenceRequired();
+					villager.addTag(ARENA_TAG);
+					level.addFreshEntity(villager);
+					keyPoints.add(Vec3.atCenterOf(cell));
+					villagers.add(Vec3.atCenterOf(cell));
+					followed = followed == null ? villager : followed;
+				}
+				subject = villagers.getFirst();
+				BlockPos point = null;
+				if (at) {
+					BlockPos near = followed.blockPosition().offset(rng.nextInt(2 * AT_SPREAD + 1) - AT_SPREAD, 0, rng.nextInt(2 * AT_SPREAD + 1) - AT_SPREAD);
+					point = new BlockPos(near.getX(), terrain.ground(near.getX(), near.getZ()) + 1, near.getZ());
+				} else {
+					farther = villagers.subList(1, villagers.size());
+				}
+				record.job = GotoJob.follow(followed, GotoJob.FOLLOW_TICKS, point);
 			}
 			case STUDIO -> Studio.build(level, rng, record, keyPoints, terrain, req.subject());
 			case MINE_DEPOSIT -> {
@@ -345,15 +377,18 @@ public final class TrainingArenas {
 		}
 
 		Vec3 primary = keyPoints.get(start);
+		Vec3 aim = subject != null ? subject : primary;
+		List<Vec3> decoys = farther;
 		Vec3 spawn = null;
 		for (int i = 0; i < 96 && spawn == null; i++) {
 			BlockPos cell = randomInside(rng, ox, oz, radius - 1, 0);
 			int ground = terrain.ground(cell.getX(), cell.getZ());
 			double y = Math.min(ground + 1.5 + rng.nextDouble() * 4.0, terrain.ceiling(cell.getX(), cell.getZ()) - 1.0);
 			Vec3 candidate = new Vec3(cell.getX() + 0.5, y, cell.getZ() + 0.5);
-			boolean farFromPrimary = candidate.distanceTo(primary) >= MIN_SPAWN_DIST;
+			boolean farFromPrimary = candidate.distanceTo(primary) >= MIN_SPAWN_DIST && candidate.distanceTo(aim) >= MIN_SPAWN_DIST;
 			boolean clearOfKeys = keyPoints.stream().allMatch(k -> horizontal(candidate, k) >= KEY_SPAWN_DIST);
-			if (farFromPrimary && clearOfKeys) {
+			boolean nearestToAim = decoys.stream().allMatch(d -> horizontal(candidate, d) >= horizontal(candidate, aim) + NEAREST_MARGIN);
+			if (farFromPrimary && clearOfKeys && nearestToAim) {
 				spawn = candidate;
 			}
 		}
@@ -361,6 +396,11 @@ public final class TrainingArenas {
 			spawn = new Vec3(ox - radius + 1.5, terrain.ground(ox - radius + 1, oz - radius + 1) + 4.0, oz - radius + 1.5);
 		}
 		float yaw = rng.nextFloat() * 360.0F - 180.0F;
+		if (rng.nextDouble() < FACE_AWAY) {
+			// the subject behind the drone, past the edge of its view, which it has to turn and search for
+			float toward = (float) Math.toDegrees(Math.atan2(-(aim.x - spawn.x), aim.z - spawn.z));
+			yaw = Mth.wrapDegrees(toward + 180.0F + (rng.nextFloat() * 2.0F - 1.0F) * FACE_AWAY_SPREAD);
+		}
 		keyPoints.add(spawn);
 		return new Member(req, rng, existing, record, spawn, yaw, BlockPos.containing(primary), stock);
 	}

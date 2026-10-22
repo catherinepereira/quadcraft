@@ -123,12 +123,14 @@ The brain keeps one core per drone for as long as it flies the drone, so a job s
 ```powershell
 .venv\Scripts\python -m drone_model.collect.render                          # rendered studio frames of every block with a model, data/render
 .venv\Scripts\python -m drone_model.collect.studio                          # game studio frames of mobs and the blocks the renderer can't draw, data/studio
+.venv\Scripts\python -m drone_model.collect.fields                          # game frames of harvest arena wheat fields from all around, data/fields
 .venv\Scripts\python -m drone_model.train.reader --out checkpoints\reader.pt   # from ImageNet weights, --gpu-share 0.4 keeps the GPU 60% idle for a game
+.venv\Scripts\python -m drone_model.train.promote_reader checkpoints\reader-v11.pt --class minecraft:wheat   # after --baseline, promotes when that class reads better
 .venv\Scripts\python -m drone_model.evaluate.reader --episodes 10          # a core with the reader reads reference builds, scored cell by cell
 .venv\Scripts\python -m drone_model.evaluate.embeddings --checkpoint checkpoints\reader.pt --dest ..\..\quadcraft-embeddings\public\data
 ```
 
-`scripts\reader_run.ps1 -Version v10` runs the whole chain unattended: it launches the held game, collects, closes the game, trains to `checkpoints\reader-v10.pt`, and exports embeddings, with logs in `logs\`. `-CollectOnly` stops once the game is closed, `-TrainOnly` skips the game and collection.
+`scripts\reader_run.ps1 -Version v10` runs the whole chain unattended: it launches the held game, collects, closes the game, trains to `checkpoints\reader-v10.pt`, and exports embeddings, with logs in `logs\`. `-CollectOnly` stops once the game is closed, `-TrainOnly` skips the game and collection. `scripts\retrain.ps1` chains field frames, a reader fine-tune with `--baseline` and the promotion check, then a goto and a skill DAgger round.
 
 The last command exports region embeddings for the explorer in `Developer/quadcraft-embeddings`: the decoder features that feed the class head, averaged over each block or mob region in a frame, with a crop of it, and laid out with UMAP in 2D and 3D.
 
@@ -144,7 +146,7 @@ Most block frames come from `collect.render` instead, which draws studio scenes 
 
 When the crosshair shows a remembered block isn't there, or something keeps blocking the view, a planner gives the block up or climbs for a steeper look.
 
-Collection flies the planner's goal plus Gaussian noise but stores the clean scripted action as the label (DART, Laskey et al. 2017). Tools and transfers stay noise-free. Training splits by episode, so validation frames never come from a training episode.
+Collection flies the planner's goal plus Gaussian noise but stores the clean scripted action as the label (DART, Laskey et al. 2017). Tools and transfers stay noise-free, and so does the flight on steps where the planner uses a tool, since a nudged aim resets a dig. Training splits by episode, so validation frames never come from a training episode.
 
 ## Policies
 

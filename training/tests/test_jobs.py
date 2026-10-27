@@ -63,9 +63,8 @@ def test_trenches_open_a_face_of_every_block():
 
 
 def test_scans_fill_memory_and_dig_shafts_to_buried_blocks(tmp_path):
-    from quadcraft.schematic import Schematic
-
     from drone_model.scripted.jobs import MinePlanner
+    from quadcraft.schematic import Schematic
 
     s = Schematic.empty(3, 3, 1)
     s.blocks[:, :, :] = "minecraft:stone"
@@ -82,9 +81,8 @@ def test_scans_fill_memory_and_dig_shafts_to_buried_blocks(tmp_path):
 
 
 def test_scanned_fields_give_ripe_crops_by_age_and_bare_plots(tmp_path):
-    from quadcraft.schematic import Schematic
-
     from drone_model.scripted.jobs import HarvestPlanner, block_age
+    from quadcraft.schematic import Schematic
 
     assert block_age("minecraft:wheat[age=7]") == 7
     assert block_age("minecraft:farmland[moisture=7]") is None
@@ -106,9 +104,8 @@ def test_scanned_fields_give_ripe_crops_by_age_and_bare_plots(tmp_path):
 
 
 def test_a_pocket_under_stone_gets_a_shaft_not_a_dig_through_it(tmp_path):
-    from quadcraft.schematic import Schematic
-
     from drone_model.scripted.jobs import MinePlanner
+    from quadcraft.schematic import Schematic
 
     # a column of ore, an air pocket, then stone on top, with stone beside it
     s = Schematic.empty(2, 3, 1)
@@ -154,9 +151,8 @@ def test_body_clear_needs_room_for_the_whole_drone(tmp_path):
 
 
 def test_a_shaft_through_a_block_the_tier_cant_harvest_is_given_up(tmp_path):
-    from quadcraft.schematic import Schematic
-
     from drone_model.scripted.jobs import MinePlanner
+    from quadcraft.schematic import Schematic
 
     # coal buried under diamond ore, which a copper drone would break for nothing
     s = Schematic.empty(2, 3, 1)
@@ -178,9 +174,8 @@ def test_a_shaft_through_a_block_the_tier_cant_harvest_is_given_up(tmp_path):
 
 
 def test_trenches_go_around_blocks_the_tier_cant_harvest(tmp_path):
-    from quadcraft.schematic import Schematic
-
     from drone_model.scripted.jobs import MinePlanner
+    from quadcraft.schematic import Schematic
 
     s = Schematic.empty(3, 1, 1)
     s.blocks[:, :, :] = "minecraft:stone"

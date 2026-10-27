@@ -38,10 +38,7 @@ def episode_files(policy: str, runs: list[str] | None = None) -> list[Path]:
 
 
 def load_steps(files: list[Path], stride: int) -> dict[str, torch.Tensor]:
-    """
-    Every stride-th step of the episodes as one table, read twice so the arrays are allocated once at full size.
-    Only the arrays every episode has are kept, older runs can carry inputs a policy has since dropped
-    """
+    """Every stride-th step of the episodes as one table, read twice so the arrays are allocated once at full size"""
     lengths, shapes = [], {}
     for f in files:
         with np.load(f) as z:
@@ -49,7 +46,8 @@ def load_steps(files: list[Path], stride: int) -> dict[str, torch.Tensor]:
             lengths.append(len(range(0, len(z[first]), stride)))
             if not shapes:
                 shapes = {k: (z[k].shape[1:], z[k].dtype) for k in z.files}
-            shapes = {k: v for k, v in shapes.items() if k in z.files}
+            elif set(z.files) != set(shapes):
+                raise SystemExit(f"{f} holds {sorted(z.files)}, the other episodes {sorted(shapes)}, recollect it")
     total = sum(lengths)
     out = {k: np.empty((total, *shape), dtype=dtype) for k, (shape, dtype) in shapes.items()}
     # True where the next row is the same episode's next kept step, for penalties on consecutive predictions
@@ -62,29 +60,3 @@ def load_steps(files: list[Path], stride: int) -> dict[str, torch.Tensor]:
         at += n
         out[CONTINUES][at - 1] = False
     return {k: torch.from_numpy(v) for k, v in out.items()}
-
-
-def load_episodes(files: list[Path]) -> list[dict[str, np.ndarray]]:
-    """Whole episodes, for policies that train on sequences"""
-    out = []
-    for f in files:
-        with np.load(f) as z:
-            out.append({k: z[k] for k in z.files})
-    return out
-
-
-def pad_episodes(episodes: list[dict[str, np.ndarray]], device: torch.device) -> dict[str, torch.Tensor]:
-    """A batch of episodes padded to the longest, with "valid" False on the padding"""
-    t = max(len(next(iter(e.values()))) for e in episodes)
-    out = {}
-    for key in episodes[0]:
-        first = episodes[0][key]
-        padded = np.zeros((len(episodes), t, *first.shape[1:]), dtype=first.dtype)
-        for i, e in enumerate(episodes):
-            padded[i, : len(e[key])] = e[key]
-        out[key] = torch.from_numpy(padded).to(device, non_blocking=True)
-    valid = np.zeros((len(episodes), t), dtype=bool)
-    for i, e in enumerate(episodes):
-        valid[i, : len(next(iter(e.values())))] = True
-    out["valid"] = torch.from_numpy(valid).to(device)
-    return out

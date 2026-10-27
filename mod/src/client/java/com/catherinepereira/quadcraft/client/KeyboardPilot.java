@@ -6,22 +6,35 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.EntityHitResult;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Turns WASD, space, shift, mouse movement, and mouse buttons into a DroneAction.
  * The mouse still rotates the parked player, so look comes from the player's rotation change since the last tick.
- * Left button held mines, a right click places from the selected slot, and the hotbar keys pick slots 0 to 8
+ * Left button held mines, a right click places from the selected slot, and the hotbar keys pick slots 0 to 8.
+ * The gimbal key swings the camera to straight down or back to level, moving the mouse up or down takes over again
  */
 public final class KeyboardPilot {
+	private static final float GIMBAL_DOWN = 90.0F;
+	private static final float GIMBAL_LEVEL = 0.0F;
+
 	private float lastYaw;
 	private float lastPitch;
 	private int lastHotbar = -1;
 	private boolean primed;
 	private boolean useClicked;
+	// the pitch the gimbal is swinging the camera to, null once it got there or the mouse took over
+	private @Nullable Float gimbal;
 
 	public void reset() {
 		this.primed = false;
 		this.useClicked = false;
+		this.gimbal = null;
+	}
+
+	/** Swings the camera straight down from a forward look, or back to level from a downward one */
+	public void toggleGimbal(float cameraPitch) {
+		this.gimbal = cameraPitch < (GIMBAL_DOWN + GIMBAL_LEVEL) / 2 ? GIMBAL_DOWN : GIMBAL_LEVEL;
 	}
 
 	/** Called by the input mixin when vanilla would have used the held item */
@@ -29,7 +42,7 @@ public final class KeyboardPilot {
 		this.useClicked = true;
 	}
 
-	public DroneAction read(Minecraft mc, float maxLook, int selectedSlot) {
+	public DroneAction read(Minecraft mc, float maxLook, int selectedSlot, float cameraPitch) {
 		LocalPlayer player = mc.player;
 		if (player == null) {
 			return DroneAction.ZERO;
@@ -43,6 +56,14 @@ public final class KeyboardPilot {
 		this.lastYaw = player.getYRot();
 		this.lastPitch = player.getXRot();
 		this.primed = true;
+		if (this.gimbal != null) {
+			float left = this.gimbal - cameraPitch;
+			if (pitch != 0 || Math.abs(left) < 0.5F) {
+				this.gimbal = null;
+			} else {
+				pitch = Mth.clamp(left, -maxLook, maxLook);
+			}
+		}
 
 		int hotbar = player.getInventory().getSelectedSlot();
 		int slot = selectedSlot;

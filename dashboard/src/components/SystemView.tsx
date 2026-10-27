@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Card, Pill } from "./ui";
 
-// keep in step with training/src/drone_model (brain.py, scripted/, policies/) and training/RESULTS.md
-const AS_OF = "2026-10-15";
+// keep in step with docs/TRAINING.md, training/src/drone_model (brain.py, scripted/, policies/), and training/RESULTS.md
+const AS_OF = "2026-10-25";
 
 interface Stage {
   id: string;
@@ -33,7 +33,7 @@ const LOOP: Stage[] = [
     summary: "Labels every pixel",
     detail: [
       "A segmentation network, a ConvNeXt-Tiny encoder pretrained on ImageNet with a U-Net decoder, that labels each 320x240 frame's pixels as one of 1,303 classes: every block a camera can show and every kind of mob.",
-      "Depth turns each labeled pixel into a 3D point. It trains on studio frames, a scene of each block and mob shot from random angles: blocks rendered offline on the GPU from the game's models and textures, mobs and chest-like blocks captured in the game. Reader v10 reads 59% of held-out block subjects and 80% of mobs right in game frames.",
+      "Depth turns each labeled pixel into a 3D point. It trains on staged scenes of each block and mob shot from random angles, blocks rendered offline on the GPU from the game's models and textures and mobs and chest-like blocks captured in the game, then on game frames of wheat fields. It reaches mean IoU 0.396 on held-out game frames, wheat 0.92.",
     ],
   },
   {
@@ -55,7 +55,7 @@ const LOOP: Stage[] = [
     summary: "Decides what to do next",
     detail: [
       "Hand-written, one per kind of job (the table below). It works out what's surveyed, what's left, and which target to commit to, and names one goal each step: look at a point from a viewpoint, break or place a block, hold the beam on a mob, go to a point, or search.",
-      "It gets only what the drone perceives, never arena answers, marker positions, or how many mobs there are.",
+      "It gets only what the drone perceives, never the true arena layout or how many mobs there are.",
     ],
   },
   {
@@ -77,7 +77,7 @@ const LOOP: Stage[] = [
     summary: "Moves the drone, scores the step",
     detail: [
       "The mod eases velocity and turning so the camera turns smoothly, moves the drone, and uses the tool.",
-      "It scores the step (progress, collisions, turn reversals, the geofence), checks whether the job is done, and sends the next frame. The loop runs about 147 steps a second for one drone.",
+      "It scores the step (progress, collisions, turn reversals, the geofence), checks whether the job is done, and sends the next frame.",
     ],
   },
 ];
@@ -95,7 +95,7 @@ const TRAINING: Stage[] = [
   },
   {
     id: "demos",
-    title: "Planner demos",
+    title: "Planner episodes",
     where: "framework/collect.py",
     kind: "scripted",
     summary: "The planner flies, every step is labeled",
@@ -151,20 +151,20 @@ const POLICIES = [
     file: "checkpoints/skill.pt",
     flies: "Build, copy, mine, harvest, patrol, guard, and hunt goals",
     status:
-      "Round 9: replicate_build 7 of 10, hunts of hostile mobs or one kind 6 of 6, hunts of every mob 1 of 6 (57% killed)",
+      "Copies, builds, and gathering 17 of 20, mining and harvest 15 of 15, hunts 10 of 15 (89% of prey killed), patrols 6 of 10",
   },
   {
     name: "Goto policy",
     file: "checkpoints/goto.pt",
     flies: "Goto, find, and follow goals, and the flights home",
     status:
-      "Round 2: goto_point, find_block, and dock_station 10 of 10 on rough, follow_mob 100%",
+      "goto_point and dock_station 30 of 30, find_block 14 of 15, follow_mob 3 of 10",
   },
   {
     name: "Block reader",
     file: "checkpoints/reader.pt",
     flies: "Perception for every job",
-    status: "v10 (ConvNeXt-Tiny, 320x240) reached mean IoU 0.362 on game frames, up from v9's 0.239",
+    status: "ConvNeXt-Tiny U-Net at 320x240, 1,303 classes, mean IoU 0.396 on held-out game frames",
   },
 ];
 

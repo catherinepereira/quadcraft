@@ -11,7 +11,8 @@ import numpy as np
 from gymnasium import spaces
 
 from .client import DroneClient
-from .protocol import DEFAULT_HOST, DEFAULT_PORT, TOOLS, Observation, action as make_action
+from .protocol import DEFAULT_HOST, DEFAULT_PORT, TOOLS, Observation
+from .protocol import action as make_action
 
 MAX_LOOK = 15.0
 # seconds a fleet reset may wait for the group's other drones to finish their episodes

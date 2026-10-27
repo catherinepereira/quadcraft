@@ -166,7 +166,7 @@ final class ResetFlow {
 		String id = kind.id + "-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + "-" + String.format("%04d", ++episodeCounter);
 		JsonObject arena = JsonParser.parseString(ready.arena()).getAsJsonObject();
 		this.run.task.begin(
-			id, kind, pending.seed(), ready.marker(), arena, pending.maxSteps(), config.collisionPenalty, config.boundsPadding,
+			id, kind, pending.seed(), ready.primary(), arena, pending.maxSteps(), config.collisionPenalty, config.boundsPadding,
 			config.outOfBoundsPenalty, config.damagePenalty, config.jitterPenalty
 		);
 		this.run.tools.reset();
@@ -178,7 +178,7 @@ final class ResetFlow {
 		}
 		this.runtime.log().setEpisode(id);
 		this.runtime.recorder().beginEpisode(this.run.droneId(), kind.id, id, this.meta(id, pending, ready, arena));
-		this.runtime.log().info("task.reset", DroneLog.fields("seed", pending.seed(), "marker", Json.pos(ready.marker()), "recording", this.runtime.recorder().recording(this.run.droneId())));
+		this.runtime.log().info("task.reset", DroneLog.fields("seed", pending.seed(), "goal", Json.pos(ready.primary()), "recording", this.runtime.recorder().recording(this.run.droneId())));
 		this.runtime.broadcastStatus();
 
 		// one idle tool tick fetches the fresh inventory and metrics before the first frame
@@ -224,7 +224,7 @@ final class ResetFlow {
 			meta.addProperty("client", pending.session().client);
 		}
 		meta.addProperty("startedAt", java.time.Instant.now().toString());
-		meta.add("marker", Json.pos(ready.marker()));
+		meta.add("goal", Json.pos(ready.primary()));
 		meta.add("arena", arena);
 		if (pending.fleet() != null) {
 			meta.add("fleet", pending.fleet());

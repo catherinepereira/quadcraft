@@ -17,10 +17,19 @@ import json
 from pathlib import Path
 
 import numpy as np
+
 from quadcraft import BridgeError, DroneEnv
 
 from ..paths import DATA
-from ..perception.reader import BLOCK_KINDS, CLASS_HASH, FRAME, INDEX, MOB_KINDS, entity_table, state_tables
+from ..perception.reader import (
+    BLOCK_KINDS,
+    CLASS_HASH,
+    FRAME,
+    INDEX,
+    MOB_KINDS,
+    entity_table,
+    state_tables,
+)
 
 SHARD = 512
 FIELDS = ("rgb", "depth", "cls", "ripe")
@@ -84,7 +93,7 @@ def main() -> None:
             subjects = []
             for subject, seed, terrain, obstacles in scenes[k * SHARD : (k + 1) * SHARD]:
                 try:
-                    obs = client.reset(seed=seed, task="studio", subject=subject, terrain=terrain, obstacles=obstacles)
+                    client.reset(seed=seed, task="studio", subject=subject, terrain=terrain, obstacles=obstacles)
                 except BridgeError as e:
                     failed.append({"subject": subject, "seed": seed, "error": str(e)})
                     continue

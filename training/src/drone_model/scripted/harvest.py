@@ -11,14 +11,24 @@ from collections import Counter
 import numpy as np
 
 from ..perception.reader import CLASSES, SKY
-from .base import AIM_TOLERANCE, SURVEY_LIMIT, TURN_GAIN, Planner, aim_angle, aim_errors, carried, place_viewpoint
-
+from .base import (
+    AIM_TOLERANCE,
+    SURVEY_LIMIT,
+    TURN_GAIN,
+    Planner,
+    aim_angle,
+    aim_errors,
+    carried,
+    place_viewpoint,
+)
 
 FIELD_VIEW_HEIGHT = 5.0
 FIELD_VIEW_PITCH = 60.0
 # steps spent looking for one plot on a sweep, and sweeps before the expert only watches for ripe crops
 SWEEP_LIMIT = 60
 MAX_SWEEPS = 2
+# aimed frames read at a plot before the sweep decides whether it is bare farmland
+PLOT_READS = 3
 
 
 class HarvestExpert(Planner):
@@ -45,6 +55,7 @@ class HarvestExpert(Planner):
         self.sweep: list[tuple[int, int, int]] | None = None
         self.sweep_steps = 0
         self.sweeps = 0
+        self.plot_reads: Counter[str] = Counter()
 
     def field(self, state: dict) -> list[int]:
         return state["job"]["region"]
@@ -139,7 +150,7 @@ class HarvestExpert(Planner):
         return CLASSES[int(np.bincount(patch).argmax())] if len(patch) else None
 
     def check_plot(self, state: dict, seed: str) -> dict:
-        """Look down at the next plot of the sweep, plant it if the reader sees bare farmland, else move on"""
+        """Look down at the next plot of the sweep, plant it if the reader reads bare farmland there, else move on"""
         plot = self.sweep[0]
         crop = (plot[0], plot[1] + 1, plot[2])
         point = (plot[0] + 0.5, plot[1] + 0.95, plot[2] + 0.5)
@@ -147,11 +158,18 @@ class HarvestExpert(Planner):
         self.sweep_steps += 1
         move, arrived = self.fly_to_view(state, via, point)
         aimed = arrived and aim_angle(state, point) < AIM_TOLERANCE
-        seen = self.center_class() if aimed else None
+        if aimed and (c := self.center_class()) is not None:
+            self.plot_reads[c] += 1
+        # one frame can misread bare farmland, the plot goes by the majority of PLOT_READS,
+        # or by the memory, many frames from many angles, when that has it bare
+        seen = self.plot_reads.most_common(1)[0][0] if self.plot_reads.total() >= PLOT_READS else None
+        if seen is not None and self.memory.label(plot) == "minecraft:farmland" and not self.memory.label(crop).startswith(self.crop(state)):
+            seen = "minecraft:farmland"
         done = crop in self.planted or plot in self.unreachable or self.sweep_steps > SWEEP_LIMIT
         if done or (seen is not None and seen != "minecraft:farmland"):
             self.sweep.pop(0)
             self.sweep_steps = 0
+            self.plot_reads.clear()
         elif seen == "minecraft:farmland":
             return self.plant(state, plot, seed)
         return self.view(state, move, via, point)

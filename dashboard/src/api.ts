@@ -13,7 +13,7 @@ export interface EpisodeMeta {
   steps?: number;
   totalReward?: number;
   droppedFrames?: number;
-  marker?: [number, number, number];
+  goal?: [number, number, number];
 }
 
 export interface StepRow {

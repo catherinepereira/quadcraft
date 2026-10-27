@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from ..policies.goto import GotoSpec
-from ..policies.seq import SeqSpec
 from ..policies.skill import SkillSpec
 from .spec import PolicySpec
 
-POLICIES: dict[str, PolicySpec] = {spec.name: spec for spec in (SeqSpec(), SkillSpec(), GotoSpec())}
+POLICIES: dict[str, PolicySpec] = {spec.name: spec for spec in (SkillSpec(), GotoSpec())}
 
 
 def get(name: str) -> PolicySpec:

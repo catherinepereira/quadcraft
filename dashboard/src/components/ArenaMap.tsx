@@ -7,7 +7,6 @@ const SIZE = 240;
 const LEGEND: { label: string; className: string }[] = [
   { label: "drone", className: "bg-accent rounded-full" },
   { label: "goal", className: "bg-marker rounded-sm" },
-  { label: "chest", className: "bg-amber rounded-sm" },
   { label: "pillar or tree", className: "bg-text-muted rounded-sm" },
   {
     label: "stalactite",
@@ -108,11 +107,7 @@ export function ArenaMap({
       <title>{title}</title>
     </rect>
   );
-  const goals: Vec3[] = [
-    ...(arena.marker ? [arena.marker] : []),
-    ...(arena.targets ?? []),
-    ...(arena.goal ? [arena.goal] : []),
-  ];
+  const goals: Vec3[] = arena.targets ?? [];
 
   return (
     <Card
@@ -200,16 +195,6 @@ export function ArenaMap({
         ))}
         {arena.distractors?.map((p) =>
           cell(p, "var(--color-text-dim)", `d${p.join()}`, "stone pedestal"),
-        )}
-        {[arena.sourceChest, arena.targetChest].map(
-          (p, i) =>
-            p &&
-            cell(
-              p,
-              "var(--color-amber)",
-              `c${i}`,
-              i === 0 ? "source chest" : "target chest",
-            ),
         )}
         {arena.referenceBase && (
           <rect

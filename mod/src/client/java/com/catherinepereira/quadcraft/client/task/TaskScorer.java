@@ -29,7 +29,8 @@ public final class TaskScorer {
 	private String episodeId;
 	private TaskKind kind = TaskKind.GOTO_POINT;
 	private long seed;
-	private BlockPos marker = BlockPos.ZERO;
+	// the task's first key point, the station for return_home
+	private BlockPos primary = BlockPos.ZERO;
 	private JsonObject arena = new JsonObject();
 	private int maxSteps;
 	private double collisionPenalty;
@@ -74,7 +75,7 @@ public final class TaskScorer {
 	private double prevBandGap = -1;
 
 	public void begin(
-		String episodeId, TaskKind kind, long seed, BlockPos marker, JsonObject arena, int maxSteps, double collisionPenalty,
+		String episodeId, TaskKind kind, long seed, BlockPos primary, JsonObject arena, int maxSteps, double collisionPenalty,
 		int boundsPadding, double outOfBoundsPenalty, double damagePenalty, double jitterPenalty
 	) {
 		JsonArray origin = arena.getAsJsonArray("origin");
@@ -104,7 +105,7 @@ public final class TaskScorer {
 		this.episodeId = episodeId;
 		this.kind = kind;
 		this.seed = seed;
-		this.marker = marker;
+		this.primary = primary;
 		this.arena = arena;
 		this.maxSteps = maxSteps;
 		this.collisionPenalty = collisionPenalty;
@@ -407,8 +408,8 @@ public final class TaskScorer {
 
 	private @Nullable Vec3 currentGoal(Vec3 drone, Predicate<BlockPos> isTarget) {
 		return switch (this.kind) {
-			// the marker is the station, the drone docks on its top
-			case RETURN_HOME -> Vec3.atCenterOf(this.marker.above());
+			// the drone docks on top of the station
+			case RETURN_HOME -> Vec3.atCenterOf(this.primary.above());
 			// no distance shaping, the drone has to study the reference before heading to the build site, or find what it hunts
 			case REPLICATE_BUILD, COPY_REGION, BUILD_SCHEMATIC, MINE_REGION, HARVEST_CROPS, HARVEST_REGION, COPY_BUILD, SCHEMATIC_BUILD, MINE_DEPOSIT, GATHER_BUILD,
 				PATROL_AREA, HUNT_MOBS, PATROL_REGION, GUARD_REGION -> null;

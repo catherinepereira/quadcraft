@@ -9,6 +9,7 @@
     "key.quadcraft.hud": "Toggle drone HUD",
     "key.quadcraft.copy": "Start copy job",
     "key.quadcraft.jobs": "Drone jobs",
+    "key.quadcraft.gimbal": "Camera down or level",
     "item.quadcraft.copper_drone": "Copper Drone",
     "item.quadcraft.iron_drone": "Iron Drone",
     "item.quadcraft.diamond_drone": "Diamond Drone",

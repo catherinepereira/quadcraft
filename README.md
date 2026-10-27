@@ -1,29 +1,32 @@
 # Quadcraft
 
-Pilotable drone for Minecraft Java whose camera feeds external programs, for recording flights and training models that fly it.
+A camera drone for Minecraft Java that flies itself from what its camera sees, and a bridge that lets programs outside the game read its camera and fly it.
 
-In your own world the drone runs jobs you set up with the tablet: copy a region, build a schematic, mine blocks, harvest a field, patrol a region or guard it from mobs, fly to a point, find a block, or follow you. A copy or build can mine its materials from a third region first. Each drone has a job queue and a battery, it flies back to its charging station to charge when the work left won't fit in the charge, using job costs it learns as it works. With BlueMap installed, the dashboard's Map tab shows the world with the regions and the drones on it. Training arenas cover the same jobs plus navigation, tool, and docking tasks, on flat, rough, or cave terrain.
+In your own world the drone runs jobs you set up with its tablet: copy a region, build a schematic, mine blocks, harvest and replant a field, patrol a region or guard it from mobs, fly to a point, find a block, follow you, or fly home to charge. A copy or build can mine its materials from another region first. Each drone has a job queue and a battery, and flies back to its charging station when the work left won't fit in its charge. You can also fly it yourself, with a camera gimbal that looks ahead or straight down.
 
-Each drone works from its camera. A learned block reader labels every pixel, and the perception core builds a voxel memory of the blocks in view and tracks the mobs around the drone. A planner picks one goal at a time from that memory, and a learned policy flies it. Scan perception reads the job's blocks straight from the world in place of the camera.
+The drone works only from its own camera. A learned block reader labels every pixel of each frame, a perception core turns the labels into a voxel memory of the world, a planner picks one goal at a time from that memory, and a learned policy flies the goal. [docs/TRAINING.md](docs/TRAINING.md) covers how each part works and trains.
 
 | Folder | What it is |
 | --- | --- |
-| [mod](mod) | Fabric mod: drone, piloting, jobs, bridge server, recorder, HUD |
-| [dashboard](dashboard) | Browser dev panel |
-| [training](training) | `quadcraft` (bridge client, Gymnasium env, dataset loader, schematic files) and `drone_model` (perception core, planners, learned policies, the drone brain) |
-| [docs](docs) | [PROTOCOL.md](docs/PROTOCOL.md), the bridge protocol all three parts follow, [SCOPE.md](docs/SCOPE.md), the plan and milestones, and [FUTURE.md](docs/FUTURE.md), known gaps |
-| [scripts](scripts) | Start the containers and Minecraft |
+| [mod](mod) | Fabric mod: the drone, piloting, jobs, training arenas, the bridge server, recording, the HUD |
+| [dashboard](dashboard) | Browser panel: live camera streams, control, the drone's memory, logs, episodes, metrics, config |
+| [training](training) | `quadcraft`, the bridge client and Gymnasium env, and `drone_model`, the perception core, planners, learned policies, and the drone brain |
+| [docs](docs) | [TRAINING.md](docs/TRAINING.md), how the models work and train, [PROTOCOL.md](docs/PROTOCOL.md), the bridge protocol every part follows, [FUTURE.md](docs/FUTURE.md), known limitations |
+| [scripts](scripts) | Start Minecraft and the containers |
 
-## Generated files
+## Platform
 
-| Folder | Written by |
+| Item | Version |
 | --- | --- |
-| `training/data` | the mod's recordings in dev runs and policy training data, with the reader's frame cache in `data/cache` |
-| `training/checkpoints`, `training/reports` | training and evaluation |
-| `training/logs` | long training and collection runs |
-| `mod/run/logs` | the mod's JSONL logs in dev runs, pruned after `logRetentionDays` |
+| Minecraft | Java 26.3, singleplayer |
+| Loader | Fabric Loader 0.19.5, Fabric API 0.161.0+26.3 |
+| JDK | 25 |
+| Training | Python 3.11, PyTorch with CUDA, a GPU with 12 GB |
 
-All of them are gitignored. A normal install of the mod writes recordings and logs under `.minecraft/quadcraft/`.
+| Port | Used by |
+| --- | --- |
+| 8318 | The mod's bridge: WebSocket for control and streams, HTTP for logs, episodes, and config |
+| 5318 | The dashboard, which proxies `/api` and `/ws` to 8318 |
 
 ## Quick start
 
@@ -31,19 +34,39 @@ Minecraft runs on the host, it needs the GPU and a window:
 
 ```powershell
 scripts\minecraft.ps1          # dev client with the mod, create a creative superflat world
-scripts\minecraft.ps1 -Arena   # or a test world with the drone and an arena ready for scripts
+scripts\minecraft.ps1 -Arena   # or a test world with a drone and an arena ready for scripts
 ```
 
-It uses a JDK 25 from `~/.jdks`, or `JAVA_HOME` when there isn't one there. In game, press N to start an episode, V to fly, B to record, and K for the job screen.
+It uses a JDK 25 from `~/.jdks`, or `JAVA_HOME` when there isn't one there. In game, V flies the drone, G swings its camera down or level, K opens the job screen, N starts a training episode, and B records. See [mod/README.md](mod/README.md) for every key, the jobs, and the config.
 
-The dashboard and the training environment run in Docker (Docker Desktop with the NVIDIA GPU support for training):
+The drone's brain and the dashboard run in Docker (Docker Desktop with NVIDIA GPU support):
 
 ```powershell
 scripts\up.ps1                                              # build and start both, dashboard on http://localhost:5318
-docker compose exec train python -m drone_model.brain       # run jobs started in game or on the dashboard, --scripted flies them without the learned policies
-docker compose exec train bash                              # training shell in training/
+docker compose exec train python -m drone_model.brain       # fly every job started in game or on the dashboard
+docker compose exec train bash                              # a shell in training/
 ```
 
-Both containers reach the game's bridge through `host.docker.internal`. The training container mounts `training`, so data, checkpoints, and reports land on the host. `scripts/up.sh` and `scripts/minecraft.sh` do the same on Linux and macOS.
+Both containers reach the game's bridge through `host.docker.internal`. The training container mounts `training`, so data, checkpoints, and reports land on the host. `scripts/up.sh` and `scripts/minecraft.sh` do the same on Linux and macOS. Without Docker, see [training/README.md](training/README.md) for the `.venv` setup and [dashboard/README.md](dashboard/README.md) for `npm run dev`.
 
-Without Docker, see each folder's README: `npm run dev` in the dashboard, and the `.venv` setup in training.
+## Models
+
+| File | What it is |
+| --- | --- |
+| `training/checkpoints/reader.pt` | The block reader, a ConvNeXt-Tiny U-Net over RGB and depth at 320x240, 1303 classes |
+| `training/checkpoints/goto.pt` | The goto policy, flies points, found blocks, follows, searches, and flights home |
+| `training/checkpoints/skill.pt` | The cell skill, flies views, breaks, places, and attacks for every other job |
+| `training/checkpoints/energy.json` | Learned battery cost per kind of job, updated as jobs finish |
+
+Results on every training arena are in [training/RESULTS.md](training/RESULTS.md).
+
+## Generated files
+
+| Folder | Written by |
+| --- | --- |
+| `training/data` | reader training frames, policy episodes, and the mod's recordings in dev runs |
+| `training/checkpoints`, `training/reports` | training and evaluation |
+| `training/logs` | the training pipeline |
+| `mod/run/logs` | the mod's JSONL logs in dev runs, pruned after `logRetentionDays` |
+
+All of them are gitignored. A normal install of the mod writes recordings and logs under `.minecraft/quadcraft/`.

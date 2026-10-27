@@ -26,7 +26,8 @@ $runs = @(
 )
 if ($Tasks) {
   $keep = $Tasks.Split(",")
-  $runs = $runs | Where-Object { $keep -contains $_[0] }
+  # @() keeps a single remaining run a list of runs, PowerShell would unroll it into its fields
+  $runs = @($runs | Where-Object { $keep -contains $_[0] })
 }
 
 function Collect($withSkill, $offset) {
@@ -47,8 +48,9 @@ function Train {
   if ($LASTEXITCODE -ne 0) { throw "skill training failed" }
 }
 
-# the checkpoint the round starts from, the first retrain overwrites it
-if (Test-Path $skill) { Copy-Item $skill (Join-Path $model "checkpoints\archive\skill-before-r$Round.pt") }
+# the checkpoint the round starts from, the first retrain overwrites it, kept from the round's first run when it runs in parts
+$before = Join-Path $model "checkpoints\archive\skill-before-r$Round.pt"
+if ((Test-Path $skill) -and -not (Test-Path $before)) { Copy-Item $skill $before }
 if (-not $SkipPlan) { Collect $false 0 }
 Train
 Copy-Item $skill (Join-Path $model "checkpoints\archive\skill-r$Round-bc.pt")

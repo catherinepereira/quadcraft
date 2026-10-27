@@ -15,10 +15,18 @@ import numpy as np
 from ..energy import dock_intent
 from ..perception.memory import AIR, MIN_VOTES, base_name
 from ..perception.reader import CLASSES, INDEX
-from .harvest import HarvestExpert
+from .base import (
+    SURVEY_LIMIT,
+    TOP_LEAN,
+    TOP_VIA_HEIGHT,
+    VIA_DIST,
+    Planner,
+    center,
+    tool_action,
+)
 from .goto import GotoPlanner
+from .harvest import HarvestExpert
 from .patrol import PatrolPlanner
-from .base import SURVEY_LIMIT, TOP_LEAN, TOP_VIA_HEIGHT, VIA_DIST, Planner, center, tool_action
 
 VIEW_SPACING = 4.0
 VIEW_DIST = 4.0

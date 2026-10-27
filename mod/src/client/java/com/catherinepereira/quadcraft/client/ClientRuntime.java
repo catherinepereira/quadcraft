@@ -378,6 +378,15 @@ public final class ClientRuntime {
 		this.hudVisible = !this.hudVisible;
 	}
 
+	public void toggleGimbal() {
+		DroneEntity drone = this.active.controller.drone();
+		if (!this.active.controller.piloting() || drone == null) {
+			this.toast("Press V to fly the drone, then G swings its camera down or level");
+			return;
+		}
+		this.keyboard.toggleGimbal(drone.getXRot());
+	}
+
 	public void newEpisodeFromKeyboard() {
 		this.startFromKeyboard(new JsonObject());
 	}
@@ -725,7 +734,8 @@ public final class ClientRuntime {
 	}
 
 	private DroneAction keyboardAction() {
-		DroneAction keys = this.keyboard.read(this.mc, this.config.maxLookPerTick, this.active.selectedSlot);
+		DroneEntity drone = this.active.controller.drone();
+		DroneAction keys = this.keyboard.read(this.mc, this.config.maxLookPerTick, this.active.selectedSlot, drone != null ? drone.getXRot() : 0.0F);
 		this.active.selectedSlot = keys.tools().slot();
 		ToolRequest queued = this.queuedTools.pollFirst();
 		if (queued == null) {

@@ -16,26 +16,29 @@ import numpy as np
 import torch
 
 from ..paths import CHECKPOINTS
-from ..torch_utils import BestCheckpoint, autocast, load_weights, pick_device, split_episodes, write_report
-from .data import CONTINUES, episode_files, load_episodes, load_steps, pad_episodes
+from ..torch_utils import (
+    BestCheckpoint,
+    autocast,
+    load_weights,
+    pick_device,
+    split_episodes,
+    write_report,
+)
+from .data import CONTINUES, episode_files, load_steps
 from .registry import get
 from .spec import PolicySpec
 
 
 class Batches:
-    """Random training batches and the validation batches, as steps or, for a sequence policy, as whole episodes"""
+    """Random training batches of steps, and the validation batches"""
 
     def __init__(self, spec: PolicySpec, files: list[Path], stride: int, batch_size: int, rng: np.random.Generator, device: torch.device) -> None:
         self.spec, self.batch_size, self.rng, self.device = spec, batch_size, rng, device
         train_files, val_files = split_episodes(files, 0.1, rng)
-        if spec.sequence:
-            self.train, self.val = load_episodes(train_files), load_episodes(val_files)
-            self.size = sum(len(next(iter(e.values()))) for e in self.train)
-        else:
-            self.train, self.val = load_steps(train_files, stride), load_steps(val_files, stride)
-            self.size = len(next(iter(self.train.values())))
-            self.starts = torch.nonzero(self.train[CONTINUES]).squeeze(1)
-            self.balance(train_files, self.starts if spec.smoothness > 0 else torch.arange(self.size))
+        self.train, self.val = load_steps(train_files, stride), load_steps(val_files, stride)
+        self.size = len(next(iter(self.train.values())))
+        self.starts = torch.nonzero(self.train[CONTINUES]).squeeze(1)
+        self.balance(train_files, self.starts if spec.smoothness > 0 else torch.arange(self.size))
         print(f"train {self.size} steps from {len(train_files)} episodes, validation from {len(val_files)}, device {device}", flush=True)
 
     def balance(self, files: list[Path], pool: torch.Tensor) -> None:
@@ -60,9 +63,6 @@ class Batches:
 
     def sample(self) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor] | None]:
         """A batch, and for a policy with a smoothness penalty the step right after each of its rows"""
-        if self.spec.sequence:
-            picks = self.rng.integers(0, len(self.train), size=self.batch_size)
-            return pad_episodes([self.train[i] for i in picks], self.device), None
         idx = self.draw()
         if self.spec.smoothness > 0:
             return self.rows(idx), self.rows(idx + 1)
@@ -72,10 +72,6 @@ class Batches:
         return {k: v[idx].to(self.device, non_blocking=True) for k, v in self.train.items()}
 
     def validation(self):
-        if self.spec.sequence:
-            for s in range(0, len(self.val), self.batch_size):
-                yield pad_episodes(self.val[s : s + self.batch_size], self.device)
-            return
         n = len(next(iter(self.val.values())))
         for s in range(0, n, 1024):
             yield {k: v[s : s + 1024].to(self.device) for k, v in self.val.items()}
@@ -103,7 +99,7 @@ def validate(spec: PolicySpec, model: torch.nn.Module, batches: Batches) -> dict
     for b in batches.validation():
         with autocast(batches.device):
             out = spec.loss(model, b)
-            if spec.smoothness > 0 and not spec.sequence:
+            if spec.smoothness > 0:
                 out["reversals"] = reversals(spec, model, b)
                 out["loss"] = out["loss"] + spec.smoothness * out["reversals"]
         for k, v in out.items():

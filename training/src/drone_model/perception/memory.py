@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .worldmap import backproject
 from .reader import CLASSES, CROPS, INDEX, MOBS, OTHER, SKY, SOLID
+from .worldmap import backproject
 
 AIR = "minecraft:air"
 # a cell needs this many votes before the drone believes anything is there

@@ -22,7 +22,7 @@ class FakeBridge:
         self.config: dict[str, Any] = {"width": width, "height": height, "streams": ["rgb", "depth", "mask"]}
         self.pos = np.zeros(3)
         self.yaw = 0.0
-        self.marker = np.array([0.0, 0.0, 5.0])
+        self.goal = np.array([0.0, 0.0, 5.0])
         self.step_count = 0
         self.seq = 0
         self.received: list[dict[str, Any]] = []
@@ -49,7 +49,7 @@ class FakeBridge:
 
     def _obs(self, reply_to: int | None) -> bytes:
         self.seq += 1
-        dist = float(np.linalg.norm(self.marker - self.pos))
+        dist = float(np.linalg.norm(self.goal - self.pos))
         done = dist < 1.5 or self.step_count >= 50
         obs = Observation(
             seq=self.seq,
@@ -59,7 +59,7 @@ class FakeBridge:
                 "vel": [0, 0, 0],
                 "yaw": self.yaw,
                 "pitch": 0.0,
-                "marker": self.marker.astype(int).tolist(),
+                "job": {"kind": "goto", "point": self.goal.astype(int).tolist(), "arrive": 1.5},
                 "inventory": [["minecraft:coal", 3]] + [["minecraft:air", 0]] * 26,
                 "selectedSlot": 0,
                 "container": None,

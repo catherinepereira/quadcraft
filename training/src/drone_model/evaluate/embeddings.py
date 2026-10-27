@@ -4,7 +4,7 @@ One point per class region in a studio frame: the decoder's last features, which
 the region's pixels. Blocks and mobs are laid out with UMAP separately, in 2D and 3D.
 Shards split into training and validation the way train.reader splits them, so each point says which side it came from
 
-    python -m drone_model.evaluate.embeddings --checkpoint checkpoints/reader-v7.pt --dest ../../quadcraft-embeddings/public/data
+    python -m drone_model.evaluate.embeddings --checkpoint checkpoints/reader.pt --dest ../../quadcraft-embeddings/public/data
 """
 
 from __future__ import annotations

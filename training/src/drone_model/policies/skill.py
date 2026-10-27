@@ -16,11 +16,10 @@ from torch.nn import functional as F
 
 from ..framework.spec import Agent, PolicySpec, Step
 from ..torch_utils import load_weights, pick_device
-from .seq import DEPTH_MAX, conv, frame_features, state_features
+from .features import DEPTH_MAX, STATE_DIM, conv, frame_features, state_features
 
 MODES = ("view", "break", "place", "attack")
 GOAL_DIM = 11
-STATE_DIM = 12
 GOAL_SCALE = 8.0
 
 
@@ -86,8 +85,7 @@ class SkillPolicy(nn.Module):
 
 def frame(obs: dict) -> tuple[np.ndarray, np.ndarray]:
     """The camera image and depth at the skill's resolution"""
-    rgb, depth, _ = frame_features(obs["rgb"], obs["depth"], np.zeros(obs["depth"].shape, dtype=np.uint16), np.zeros(1, dtype=np.uint8))
-    return rgb, depth
+    return frame_features(obs["rgb"], obs["depth"])
 
 
 class SkillAgent(Agent):
@@ -106,7 +104,7 @@ class SkillAgent(Agent):
 
     def act(self, step: Step) -> dict:
         """The skill flies the teacher's goal, and on steps without one (an errand, a pause) the teacher's own action stands"""
-        intent = step.teacher.intent if step.teacher is not None else None
+        intent = step.teacher.intent
         return self.fly(step.state, step.obs, intent) if intent is not None else step.label
 
     @torch.no_grad()
@@ -140,7 +138,7 @@ class SkillSpec(PolicySpec):
     def record(self, step: Step) -> dict[str, np.ndarray] | None:
         from ..scripted.base import TOOLS
 
-        intent = step.teacher.intent if step.teacher is not None else None
+        intent = step.teacher.intent
         if intent is None:
             return None
         rgb, depth = frame(step.obs)

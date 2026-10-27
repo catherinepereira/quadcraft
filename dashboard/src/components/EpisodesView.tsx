@@ -202,7 +202,7 @@ export function EpisodesView() {
                 {vec(row?.state.pos as number[] | undefined)}
               </Row>
               <Row label="Seed">{selected.seed}</Row>
-              <Row label="Marker">{vec(selected.marker, 0)}</Row>
+              <Row label="Goal">{vec(selected.goal, 0)}</Row>
               <Row label="Dropped frames">{selected.droppedFrames ?? 0}</Row>
             </Card>
           </div>

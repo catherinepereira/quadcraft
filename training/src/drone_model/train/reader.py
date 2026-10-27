@@ -24,7 +24,14 @@ from torch.nn import functional as F
 
 from ..paths import CHECKPOINTS, DATA
 from ..perception.reader import CLASS_HASH, CLASSES, FRAME, NOT_CROP, BlockReader
-from ..torch_utils import BestCheckpoint, Throttle, autocast, pick_device, split_episodes, write_report
+from ..torch_utils import (
+    BestCheckpoint,
+    Throttle,
+    autocast,
+    pick_device,
+    split_episodes,
+    write_report,
+)
 
 FIELDS = ("rgb", "depth", "cls", "ripe")
 # the pretrained encoder's learning rate as a share of the decoder's, so the first steps don't undo its pretraining

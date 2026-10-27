@@ -1,6 +1,6 @@
 """
 What a learned drone policy provides, so one set of commands collects its data, trains it, evaluates it, and films it.
-A policy is a PolicySpec subclass registered in framework.registry, see training/POLICIES.md
+A policy is a PolicySpec subclass registered in framework.registry, see Adding a policy in docs/TRAINING.md
 """
 
 from __future__ import annotations
@@ -13,21 +13,20 @@ import numpy as np
 import torch
 from torch import nn
 
-from ..scripted.jobs import episode_expert
 from ..paths import SCHEMATICS
+from ..scripted.jobs import episode_expert
 from ..torch_utils import load_weights
 
 
 @dataclass
 class Step:
-    """One step as a policy's record sees it, from a live run or from a recorded episode"""
+    """One step of a live run as a policy's record sees it"""
 
-    state: dict  # the drone's state, privileged fields included, record must only read what the policy may
+    state: dict  # the drone's state, record must only read what the policy may
     obs: dict  # the env's observation: rgb, depth, mask, and the vectors DroneEnv adds
     label: dict  # the teacher's action for this step, see scripted.base.tool_action
-    prev: dict | None  # what flew on the step before, None on the first step
     mask_ids: dict  # the mod's names for mask ids, sent on connect
-    teacher: Any = None  # the teacher itself on a live run, None for a recorded episode
+    teacher: Any  # the planner labeling the run, its intent is the goal a policy flies
 
 
 class Agent:
@@ -40,18 +39,13 @@ class Agent:
         """The action for this step. step.label is the teacher's, a policy that works for its teacher (the skill) reads it"""
         raise NotImplementedError
 
-    def executed(self, action: dict) -> None:
-        """What actually flew this step, DAgger flies the teacher on some steps and a recurrent policy feeds it back in"""
-
 
 class PolicySpec:
     # the registry's name for the policy, its data folder, and its default checkpoint
     name = ""
     # what the env sends, teachers that map the arena read the mask
     streams: tuple[str, ...] = ("rgb", "depth", "mask")
-    # trains on whole episodes, for a policy that carries memory from step to step
-    sequence = False
-    # steps a flat batch holds, or episodes a sequence batch holds
+    # steps a training batch holds
     batch_size = 128
     # keep every stride-th step of an episode for flat training, neighboring frames are nearly the same
     stride = 1
@@ -70,11 +64,11 @@ class PolicySpec:
         raise NotImplementedError
 
     def loss(self, model: nn.Module, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """The training loss as "loss" plus anything worth printing. A sequence batch adds "valid", False on padding"""
+        """The training loss as "loss" plus anything worth printing"""
         raise NotImplementedError
 
     def look(self, model: nn.Module, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """The predicted turn for a flat batch as (yaw, pitch) rows, needed when smoothness is above 0"""
+        """The predicted turn for a batch as (yaw, pitch) rows, needed when smoothness is above 0"""
         raise NotImplementedError
 
     def augment(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:

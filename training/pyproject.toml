@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "quadcraft-training"
-version = "0.1.0"
+version = "1.0.0"
 description = "quadcraft, the bridge client and Gymnasium env for the Quadcraft mod, and drone_model, the block reader, job planners, and learned skill"
 authors = [{ name = "Cat Pereira" }]
 requires-python = ">=3.11"

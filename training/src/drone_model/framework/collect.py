@@ -1,33 +1,35 @@
 """
 Collects a policy's training data. Its teacher flies the task with flight noise, none while it uses a tool, and labels
-every step with its clean action (DART, Laskey et al. 2017). With --dagger a trained policy flies a share of the steps and the teacher still labels
-every one, so the data covers the states the policy gets itself into (DAgger, Ross et al. 2011). --recordings turns
-episodes the mod recorded with expert labels (collect.demos) into the same rows
+every step with its clean action (DART, Laskey et al. 2017).
+With --dagger a trained policy flies a share of the steps and the teacher still labels every one, so the data covers
+the states the policy gets itself into (DAgger, Ross et al. 2011)
 
     python -m drone_model.framework.collect --policy skill --task hunt_mobs --episodes 40
     python -m drone_model.framework.collect --policy skill --task hunt_mobs --dagger checkpoints/skill.pt
-    python -m drone_model.framework.collect --policy skill --recordings replicate_build
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import numpy as np
-from quadcraft import DroneEnv, list_episodes
-from quadcraft.dataset import action_array
 
-from .. import labels as expert_labels
-from ..scripted.base import TOOLS, tool_action
-from ..paths import CHECKPOINTS, DATA
+from quadcraft import DroneEnv
+
+from ..paths import CHECKPOINTS
 from ..perception.reader import FRAME, Reader
+from ..scripted.base import TOOLS
 from ..torch_utils import pick_device
 from .data import run_dir, save_episode
 from .evaluate import outcome
 from .registry import get
 from .spec import PolicySpec, Step
+
+
+def with_flight_noise(action: dict, rng: np.random.Generator, scale: float) -> dict:
+    """The action with Gaussian noise on its flight, tools and transfers stay the teacher's own"""
+    return dict(action, move=np.clip(action["move"] + rng.normal(0.0, scale, size=5).astype(np.float32), -1.0, 1.0))
 
 
 def collect(spec: PolicySpec, args, out: Path) -> None:
@@ -48,13 +50,13 @@ def collect(spec: PolicySpec, args, out: Path) -> None:
             if args.dagger is not None:
                 agent = agent or spec.agent(spec.load(args.dagger, pick_device()), env.client.mask_ids)
                 agent.reset()
-            rows, prev = [], None
+            rows = []
             # an arena can be done before its first step
             terminated, truncated = bool(info["episode"].get("done")), False
             while not (terminated or truncated):
                 state = info["state"]
                 label = teacher.act(state, obs)
-                step = Step(state, obs, label, prev, env.client.mask_ids, teacher)
+                step = Step(state, obs, label, env.client.mask_ids, teacher)
                 row = spec.record(step)
                 if row is not None:
                     rows.append(row)
@@ -64,40 +66,12 @@ def collect(spec: PolicySpec, args, out: Path) -> None:
                     # noise knocks the aim off a block being dug, which resets the dig, so a tool's hold flies clean
                     action = label
                 else:
-                    action = expert_labels.with_flight_noise(label, rng, args.noise)
-                if agent is not None:
-                    agent.executed(action)
-                prev = action
+                    action = with_flight_noise(label, rng, args.noise)
                 obs, _, terminated, truncated, info = env.step(action)
             save_episode(out / f"{seed}.npz", rows)
             print(f"episode {i + 1}/{args.episodes}: {len(rows)} rows, {outcome(info['episode'])}", flush=True)
     finally:
         env.close()
-
-
-def from_recordings(spec: PolicySpec, task: str, out: Path, every_outcome: bool, data: Path = DATA) -> None:
-    """Rows from episodes the mod recorded, labeled by the expert.jsonl beside each one"""
-    mask_ids = json.loads((data / task / "mask_ids.json").read_text(encoding="utf-8"))
-    count = 0
-    for ep in list_episodes(data, task):
-        labels = expert_labels.read(ep.path)
-        # a failed expert demo can hold a misread build, a DAgger episode's labels are the expert's whatever the outcome
-        if labels is None or not (every_outcome or ep.meta.get("outcome") == "success" or (ep.path / "dagger").exists()):
-            continue
-        rows, prev = [], None
-        for row in ep.steps:
-            n = row["step"]
-            if row["action"] is None or n >= len(labels):
-                continue
-            label = labels[n] if isinstance(labels[n], dict) else tool_action(labels[n])
-            obs = {"rgb": ep.rgb(n), "depth": ep.depth(n), "mask": ep.mask(n) if ep.has("mask", n) else None}
-            record = spec.record(Step(row["state"], obs, label, prev, mask_ids))
-            if record is not None:
-                rows.append(record)
-            prev = {"move": action_array(row["action"]), "tool": TOOLS.index(row["action"].get("tool", "none"))}
-        save_episode(out / f"{ep.meta['id']}.npz", rows)
-        count += 1
-    print(f"{count} recorded {task} episodes into {out}")
 
 
 def main() -> None:
@@ -116,16 +90,11 @@ def main() -> None:
     parser.add_argument("--noise", type=float, default=0.2, help="flight noise on the teacher's executed action")
     parser.add_argument("--dagger", type=Path, default=None, help="a trained checkpoint that flies a share of the steps")
     parser.add_argument("--beta", type=float, default=0.5, help="share of steps the --dagger policy flies")
-    parser.add_argument("--recordings", default=None, help="a task folder of recorded episodes to turn into rows instead of flying")
-    parser.add_argument("--every-outcome", action="store_true", help="with --recordings, keep failed expert episodes too")
     parser.add_argument("--run", default=None, help="data folder under data/policies/<policy>, task-terrain by default")
     parser.add_argument("--prey", default=None, help="a hunt's prey: hostile, all, or kinds such as cow,zombie, the arena picks when left out")
     args = parser.parse_args()
 
     spec = get(args.policy)
-    if args.recordings:
-        from_recordings(spec, args.recordings, run_dir(spec.name, args.run or f"{args.recordings}-recorded"), args.every_outcome)
-        return
     default = f"{args.task}-{args.terrain}" + ("-dagger" if args.dagger else "")
     collect(spec, args, run_dir(spec.name, args.run or default))
 

@@ -38,12 +38,8 @@ export interface Arena {
   obstacles: [number, number, number, number][];
   trees?: [number, number, number][];
   stalactites?: [number, number, number][];
-  marker?: Vec3;
   targets?: Vec3[];
   distractors?: Vec3[];
-  goal?: Vec3;
-  sourceChest?: Vec3;
-  targetChest?: Vec3;
   referenceBase?: Vec3;
   buildBase?: Vec3;
   blueprint?: { offset: Vec3; block: string }[];

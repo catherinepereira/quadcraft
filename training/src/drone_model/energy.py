@@ -11,8 +11,8 @@ import math
 import threading
 from pathlib import Path
 
-from .scripted.base import tool_action
 from .paths import CHECKPOINTS
+from .scripted.base import tool_action
 
 SAVE = CHECKPOINTS / "energy.json"
 # blocks a tick the drone covers cruising, the first guess at what a flight costs before any trip home is measured

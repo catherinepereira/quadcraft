@@ -10,9 +10,9 @@ from pathlib import Path
 
 import numpy as np
 
+from .classes import alias
 from .memory import AIR, Cell, Change, VoxelMemory, base_name
 from .mobs import MobTracker, mob_ids
-from .classes import alias
 from .reader import CLASSES, INDEX, OTHER, SKY, class_lut, mask_lut
 from .worldmap import WorldMap, camera_axes
 

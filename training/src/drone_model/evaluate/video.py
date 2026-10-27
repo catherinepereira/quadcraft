@@ -11,8 +11,9 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-from quadcraft import DroneEnv
 from PIL import Image, ImageDraw, ImageFont
+
+from quadcraft import DroneEnv
 
 from ..framework.evaluate import Runner, outcome
 from ..framework.registry import POLICIES
@@ -28,7 +29,6 @@ BG = (246, 248, 252)
 INK = (31, 41, 51)
 MUTED = (91, 103, 118)
 ACCENT = (61, 123, 217)
-MARKER = (232, 137, 43)
 FPS = 20
 
 
@@ -74,11 +74,8 @@ def draw_map(draw: ImageDraw.ImageDraw, state: dict, arena: dict | None, box: tu
         draw.rectangle((sx(x), sz(z), sx(x + w), sz(z + w)), fill=MUTED)
     for p in arena.get("distractors", []):
         draw.rectangle((sx(p[0]), sz(p[2]), sx(p[0] + 1), sz(p[2] + 1)), fill=(170, 176, 186))
-    for key, color in (("targets", (40, 40, 40)), ("marker", MARKER), ("goal", (46, 158, 99))):
-        points = arena.get(key, [])
-        points = [points] if points and isinstance(points[0], int) else points
-        for p in points:
-            draw.rectangle((sx(p[0]), sz(p[2]), sx(p[0] + 1), sz(p[2] + 1)), fill=color)
+    for p in arena.get("targets", []):
+        draw.rectangle((sx(p[0]), sz(p[2]), sx(p[0] + 1), sz(p[2] + 1)), fill=(40, 40, 40))
     for key, color in (("referenceBase", (90, 170, 180)), ("buildBase", (120, 190, 60))):
         if key in arena:
             p = arena[key]

@@ -143,7 +143,6 @@ export function LiveView() {
                     {episode.metrics[1]} killed, {episode.metrics[0]} left
                   </Row>
                 )}
-              <Row label="Marker">{vec(state?.marker ?? undefined, 0)}</Row>
             </>
           ) : (
             <p className="text-text-dim text-sm">

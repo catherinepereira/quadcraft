@@ -3,7 +3,7 @@ Promotes a reader trained with --baseline to checkpoints/reader.pt when, on the 
 it reads the named class better than the baseline and loses at most TOLERANCE mean IoU.
 Exits 1 when it doesn't
 
-    python -m drone_model.train.promote_reader checkpoints/reader-v11.pt --class minecraft:wheat
+    python -m drone_model.train.promote_reader checkpoints/reader-candidate.pt --class minecraft:wheat
 """
 
 from __future__ import annotations

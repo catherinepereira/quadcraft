@@ -38,6 +38,7 @@ public class QuadcraftClient implements ClientModInitializer {
 		KeyMapping hud = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.quadcraft.hud", InputConstants.Type.KEYBOARD, InputConstants.KEY_F8, CATEGORY));
 		KeyMapping copy = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.quadcraft.copy", InputConstants.Type.KEYBOARD, InputConstants.KEY_J, CATEGORY));
 		KeyMapping jobs = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.quadcraft.jobs", InputConstants.Type.KEYBOARD, InputConstants.KEY_K, CATEGORY));
+		KeyMapping gimbal = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.quadcraft.gimbal", InputConstants.Type.KEYBOARD, InputConstants.KEY_G, CATEGORY));
 
 		HudElementRegistry.addLast(Quadcraft.id("hud"), (graphics, delta) -> {
 			if (Holder.hud != null) {
@@ -93,6 +94,9 @@ public class QuadcraftClient implements ClientModInitializer {
 			}
 			while (jobs.consumeClick()) {
 				runtime.openJobs();
+			}
+			while (gimbal.consumeClick()) {
+				runtime.toggleGimbal();
 			}
 			runtime.tick();
 		});

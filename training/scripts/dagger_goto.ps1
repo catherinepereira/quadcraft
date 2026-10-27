@@ -40,8 +40,9 @@ function Train {
   if ($LASTEXITCODE -ne 0) { throw "goto training failed" }
 }
 
-# the checkpoint the round starts from, the first retrain overwrites it
-if (Test-Path $goto) { Copy-Item $goto (Join-Path $model "checkpoints\archive\goto-before-r$Round.pt") }
+# the checkpoint the round starts from, the first retrain overwrites it, kept from the round's first run when it runs in parts
+$before = Join-Path $model "checkpoints\archive\goto-before-r$Round.pt"
+if ((Test-Path $goto) -and -not (Test-Path $before)) { Copy-Item $goto $before }
 if (-not $SkipPlan) { Collect $false 0 }
 Train
 Copy-Item $goto (Join-Path $model "checkpoints\archive\goto-r$Round-bc.pt")

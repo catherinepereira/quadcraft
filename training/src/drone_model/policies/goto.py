@@ -10,14 +10,16 @@ import math
 
 import numpy as np
 import torch
-from quadcraft.env import range_vector
 from torch import nn
 from torch.nn import functional as F
 
-from ..scripted.base import tool_action
+from quadcraft.env import range_vector
+
 from ..framework.spec import Agent, PolicySpec, Step
+from ..scripted.base import tool_action
 from ..torch_utils import load_weights, pick_device
-from .seq import conv, state_features
+from .features import STATE_DIM as BASE_STATE_DIM
+from .features import conv, state_features
 from .skill import frame
 
 MODES = ("goto", "follow", "explore")
@@ -25,7 +27,8 @@ GOAL_SCALE = 8.0
 # the goal relative to the camera in the heading frame (3), its distance across the ground and bearing, how far off to
 # hold (standoff, hover), and the mode
 GOAL_DIM = 3 + 2 + 2 + len(MODES)
-STATE_DIM = 12 + 2
+# the state vector plus the front and down range sensors
+STATE_DIM = BASE_STATE_DIM + 2
 
 
 def goal_features(state: dict, intent: dict) -> np.ndarray:
@@ -84,7 +87,7 @@ class GotoAgent(Agent):
 
     def act(self, step: Step) -> dict:
         """Flies the planner's goal, and on steps without one (a turn on the spot while searching) the planner's own move stands"""
-        intent = step.teacher.intent if step.teacher is not None else None
+        intent = step.teacher.intent
         return self.fly(step.state, step.obs, intent) if intent is not None else step.label
 
     @torch.no_grad()
@@ -104,7 +107,7 @@ class GotoSpec(PolicySpec):
         return GotoPolicy()
 
     def record(self, step: Step) -> dict[str, np.ndarray] | None:
-        intent = step.teacher.intent if step.teacher is not None else None
+        intent = step.teacher.intent
         if intent is None:
             return None
         rgb, depth = frame(step.obs)

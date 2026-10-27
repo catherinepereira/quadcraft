@@ -4,10 +4,9 @@ import numpy as np
 import pytest
 import torch
 
-from drone_model.scripted.base import tool_action
-from drone_model.framework.data import pad_episodes
 from drone_model.framework.registry import POLICIES
 from drone_model.framework.spec import Step
+from drone_model.scripted.base import tool_action
 
 MASK_IDS = {"blocks": ["minecraft:stone"], "entities": ["quadcraft:drone"], "categories": ["misc"], "entityBase": 32768}
 
@@ -19,7 +18,7 @@ def step() -> Step:
     }
     obs = {"rgb": np.zeros((120, 160, 3), np.uint8), "depth": np.full((120, 160), 5.0, np.float32), "mask": np.ones((120, 160), np.uint16)}
     teacher = SimpleNamespace(intent={"mode": "place", "aim": (1.5, 64.5, 3.5), "via": None, "block": "minecraft:bricks", "standoff": 0.0, "hover": 0.0})
-    return Step(state, obs, tool_action([0.5, 0, 0, 0.1, 0], "place"), None, MASK_IDS, teacher)
+    return Step(state, obs, tool_action([0.5, 0, 0, 0.1, 0], "place"), MASK_IDS, teacher)
 
 
 @pytest.mark.parametrize("name", list(POLICIES))
@@ -27,10 +26,7 @@ def test_every_policy_records_trains_and_acts(name):
     spec = POLICIES[name]
     rows = [spec.record(step()) for _ in range(4)]
     columns = {k: np.stack([r[k] for r in rows]) for k in rows[0]}
-    if spec.sequence:
-        batch = pad_episodes([columns], torch.device("cpu"))
-    else:
-        batch = {k: torch.from_numpy(v) for k, v in columns.items()}
+    batch = {k: torch.from_numpy(v) for k, v in columns.items()}
     model = spec.model()
     out = spec.loss(model, spec.augment(batch))
     assert torch.isfinite(out["loss"])

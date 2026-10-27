@@ -15,7 +15,17 @@ from pathlib import Path
 import numpy as np
 
 from ..perception.mobs import prey_ids
-from .base import AIM_TOLERANCE, BEAM_RANGE, BOUNDS_GAP, CEILING_GAP, SEARCH_HEIGHT, Planner, aim_angle, aim_errors, tool_action
+from .base import (
+    AIM_TOLERANCE,
+    BEAM_RANGE,
+    BOUNDS_GAP,
+    CEILING_GAP,
+    SEARCH_HEIGHT,
+    Planner,
+    aim_angle,
+    aim_errors,
+    tool_action,
+)
 
 # the drone counts a cell as passed this far inside its visit radius, the server's check is on the exact pose
 VISIT_MARGIN = 0.5

@@ -21,7 +21,7 @@ To use the mod in the regular launcher, install Fabric for 26.3 with the Fabric 
 
 ## In game
 
-Create a creative superflat world. The copper, iron, diamond, and netherite drones, the tablet, the charging station, and the marker block are in the Tools and Utilities tab, and all but the marker can be crafted, see Crafting.
+Create a creative superflat world. The copper, iron, diamond, and netherite drones, the tablet, the charging station, and the marker block, a glowing block to fly to, are in the Tools and Utilities tab, and all but the marker can be crafted, see Crafting.
 
 | Key | Action |
 | --- | --- |
@@ -33,8 +33,9 @@ Create a creative superflat world. The copper, iron, diamond, and netherite dron
 | F8 | Toggle the status panel |
 | J | Start a copy job from the tablet's selection |
 | K | Open the job screen for the active drone |
+| G | While piloting, swing the camera straight down, or back to level |
 
-While piloting: WASD moves, Space and Shift climb and descend, the mouse turns the camera, holding the left button mines, the right button places from the selected slot, and the hotbar keys select slots 0 to 8. In the inventory screen a click moves a stack between the drone and the open container, and a right click selects a slot. With recording armed and no bridge controller, episodes chain automatically so you can record demos back to back, until one passes with no input.
+While piloting: WASD moves, Space and Shift climb and descend, the mouse turns the camera, holding the left button mines, the right button places from the selected slot, and the hotbar keys select slots 0 to 8. The camera is on a gimbal: the drone flies along its heading at any camera pitch, so it can fly forward looking straight down. In the inventory screen a click moves a stack between the drone and the open container, and a right click selects a slot. With recording armed and no bridge controller, episodes chain automatically so you can record demos back to back, until one passes with no input.
 
 ## Jobs
 
@@ -161,8 +162,7 @@ Depth and mask come from raycasts, so they don't depend on the graphics backend.
 ```powershell
 .\gradlew.bat runClientGameTest                  # launches a client and checks tasks, jobs, tiers, the attack tool, docking and the battery, the job queue, the drone's chest, frames, and recording over the bridge
 .\gradlew.bat runClientGameTest -Pe2eHold=600    # same, then keeps the world open for the end-to-end tests in training
-powershell -File scripts
-egame.ps1               # closes a held game, reruns the gametest with a day-long hold, prints whether it passed
+powershell -File scripts\regame.ps1      # closes a held game, reruns the gametest with a day-long hold, prints whether it passed
 ```
 
 Screenshots from the run land in `build/run/clientGameTest/screenshots`.
@@ -182,4 +182,4 @@ src/gametest/   client gametest
 - Drops follow the tier's pickaxe. Gold, diamond, emerald, and redstone ore need an iron drone or better, and obsidian a diamond or netherite one. Mine jobs leave out kinds the drone gets nothing from, the job screen warns about them before you start, and the brain digs around those blocks.
 - RGB capture reads the main framebuffer, so frames show whatever the game window renders at its current FOV and settings. Keep the window open and unminimized while streaming.
 - Each lockstep step waits for one rendered frame, so step rate follows FPS. Minecraft drops to 10 FPS when the window is unfocused for a while, set Video Settings, Inactivity FPS Limit to Minimized to keep full speed in the background.
-- The marker block can't be broken in survival. It's meant for the arena, not gameplay.
+- The marker block can't be broken in survival, drones included.

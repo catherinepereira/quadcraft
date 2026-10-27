@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+
 from quadcraft import DroneEnv
 
 from ..paths import CHECKPOINTS, REPORTS
@@ -53,21 +54,17 @@ class Runner:
         self.model = None if teacher_only else self.spec.load(self.checkpoint, pick_device())
         self.agent = None
         self.teacher = None
-        self.prev = None
 
     def start(self, task: str, info: dict, mask_ids: dict) -> None:
         self.teacher = self.spec.teacher(task, info, mask_ids, self.reader)
         self.mask_ids = mask_ids
-        self.prev = None
         if self.model is not None:
             self.agent = self.agent or self.spec.agent(self.model, mask_ids)
             self.agent.reset()
 
     def act(self, state: dict, obs: dict) -> dict:
         label = self.teacher.act(state, obs)
-        action = label if self.agent is None else self.agent.act(Step(state, obs, label, self.prev, self.mask_ids, self.teacher))
-        self.prev = action
-        return action
+        return label if self.agent is None else self.agent.act(Step(state, obs, label, self.mask_ids, self.teacher))
 
 
 def main() -> None:

@@ -6,8 +6,8 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
-/** Server to client, the arena is built and the drone is at its spawn pose. arena is ArenaRecord.toJson, marker is the primary goal block */
-public record TaskReadyPayload(int requestId, int droneId, BlockPos marker, BlockPos origin, double x, double y, double z, float yaw, String arena, String error)
+/** Server to client, the arena is built and the drone is at its spawn pose. arena is ArenaRecord.toJson, primary is the task's first key point */
+public record TaskReadyPayload(int requestId, int droneId, BlockPos primary, BlockPos origin, double x, double y, double z, float yaw, String arena, String error)
 	implements CustomPacketPayload {
 	public static final Type<TaskReadyPayload> TYPE = new Type<>(Quadcraft.id("task_ready"));
 	public static final StreamCodec<FriendlyByteBuf, TaskReadyPayload> CODEC = CustomPacketPayload.codec(TaskReadyPayload::write, TaskReadyPayload::read);
@@ -25,7 +25,7 @@ public record TaskReadyPayload(int requestId, int droneId, BlockPos marker, Bloc
 	private void write(FriendlyByteBuf buf) {
 		buf.writeVarInt(this.requestId);
 		buf.writeVarInt(this.droneId);
-		buf.writeBlockPos(this.marker);
+		buf.writeBlockPos(this.primary);
 		buf.writeBlockPos(this.origin);
 		buf.writeDouble(this.x);
 		buf.writeDouble(this.y);

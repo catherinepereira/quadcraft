@@ -25,8 +25,6 @@ from .base import (
     tool_action,
 )
 from .goto import GotoPlanner
-from .harvest import HarvestExpert
-from .patrol import PatrolPlanner
 
 VIEW_SPACING = 4.0
 VIEW_DIST = 4.0
@@ -35,10 +33,6 @@ GAP_VIEW_DIST = 2.2
 # a viewpoint is where the camera goes, the drone's feet are about this far below it
 VIA_EYE = 0.2
 CARRIED_SHARE = 0.25
-# the age a crop is ripe at, where it isn't 7
-RIPE_AGE = {"minecraft:beetroots": 3}
-# a mining job digs a block if at least this share of its reads said the job's block, even when most said something else
-DOUBT_SHARE = 0.15
 # trenches two wide every four blocks leave two-wide walls, so every block of a dug box has a face in a trench
 # Two wide because the drone needs more than a block of room to fly down one
 TRENCH_WIDTH = 2
@@ -61,15 +55,6 @@ FACES = {(0, -1, 0): "up", (1, 0, 0): "west", (-1, 0, 0): "east", (0, 0, 1): "no
 def neighbors(cell) -> list[tuple[int, int, int]]:
     x, y, z = cell
     return [(x + 1, y, z), (x - 1, y, z), (x, y + 1, z), (x, y - 1, z), (x, y, z + 1), (x, y, z - 1)]
-
-
-def block_age(block: str) -> int | None:
-    """The age property of a block state such as minecraft:wheat[age=7], None without one"""
-    for prop in block.partition("[")[2].rstrip("]").split(","):
-        key, _, value = prop.partition("=")
-        if key == "age":
-            return int(value)
-    return None
 
 
 def spaced(lo: int, hi: int) -> list[float]:
@@ -328,11 +313,6 @@ class JobPlanner(Planner):
         """The share of a cell's votes for block"""
         c = self.memory.cells.get(cell)
         return 0.0 if c is None else c.share(INDEX[block])
-
-    @staticmethod
-    def region_cells(box) -> list[tuple[int, int, int]]:
-        x0, y0, z0, x1, y1, z1 = box
-        return [(x, y, z) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1) for z in range(z0, z1 + 1)]
 
 
 class BuildPlanner(JobPlanner):
@@ -625,125 +605,6 @@ class BuildPlanner(JobPlanner):
         return tuple(box[:3]), tuple(box[3:])
 
 
-class MinePlanner(JobPlanner):
-    """
-    Mine jobs: looks the region over and breaks every block of the job's kinds it can see there. With none in sight it digs
-    trenches through the region, which uncovers buried ones, and breaks those as they come into view
-    """
-
-    def __init__(self, mask_ids: dict, depth_max: float = 64.0, reader=None, schematics: Path | None = None, core=None) -> None:
-        super().__init__(mask_ids, depth_max, reader, schematics, core=core)
-        self.empty_surveys = 0
-        self.walls_checked = False
-
-    def decide(self, state: dict) -> dict:
-        job = state["job"]
-        blocks = set(job["blocks"])
-        self.note_breaks(state)
-        self.note_job(job)
-        if "region" in self.scanned_boxes:
-            # the scan knows every block of the kinds, buried or not, any block the game has
-            cell = self.committed(state, self.scanned_in(job["region"], blocks))
-            if cell is None and self.retry_given_up():
-                cell = self.committed(state, self.scanned_in(job["region"], blocks))
-            return self.dig(state, cell, self.scanned[cell], job["region"]) if cell is not None else self.idle()
-        unknown = sorted(blocks - set(INDEX))
-        if unknown:
-            raise ValueError(f"the block reader doesn't know {', '.join(unknown)}, it can't find them to mine")
-        if self.views is None:
-            self.start_survey(state, job["region"])
-        if self.views:
-            return self.survey(state)
-        lo, hi = job["region"][:3], job["region"][3:]
-        targets = [c for c, label in self.memory.box(lo, hi).items() if base_name(label) in blocks and c not in self.unreachable]
-        cell = self.committed(state, targets)
-        if cell is not None:
-            self.empty_surveys = 0
-            return self.dig(state, cell, self.target_block, job["region"])
-        cell = self.next_dig(state, job["region"])
-        if cell is not None:
-            # every trench block comes out whatever it is, a misread mustn't make the drone give up on it
-            return self.dig(state, cell, None)
-        if not self.walls_checked:
-            # the views from outside barely see into the trenches, look at each wall block not yet seen well up close
-            self.walls_checked = True
-            box = job["region"]
-            walls = [
-                c for c in self.region_cells(box)
-                if not self.empty(c) and self.unseen(c) and any(self.empty(n) for n in neighbors(c))
-            ]
-            self.views = self.close_views(walls, box)
-            if self.views:
-                return self.survey(state)
-        # the reader can take buried ore for stone, dig what had a fair share of votes for a kind before giving up
-        doubtful = [
-            c for c in self.region_cells(job["region"])
-            if not self.empty(c) and c not in self.unreachable and max(self.share(c, b) for b in blocks) >= DOUBT_SHARE
-        ]
-        if doubtful:
-            return self.dig(state, self.stick(state, doubtful), None, job["region"])
-        if self.empty_surveys >= 2:
-            if self.retry_given_up():
-                self.empty_surveys = 0
-            return self.idle()
-        self.empty_surveys += 1
-        self.views = None
-        return self.idle()
-
-
-class HarvestPlanner(HarvestExpert):
-    """
-    The harvest expert for a player's job.
-    With a scanned field it skips the survey, takes ripeness from each crop's age, and plants the plots the scan found bare
-    without looking at them first
-    """
-
-    def __init__(self, mask_ids: dict, depth_max: float = 64.0, reader=None, schematics: Path | None = None, core=None) -> None:
-        super().__init__(mask_ids, depth_max, reader, core=core, schematics=schematics)
-        self.schematics = schematics
-
-    @property
-    def field_scan(self) -> dict[tuple[int, int, int], str]:
-        """Block states of the field by cell, read by the core, empty in vision perception"""
-        return self.core.scans.get("region", {})
-
-    def decide(self, state: dict) -> dict:
-        if self.field_scan and self.views is None:
-            self.views = []
-        return super().decide(state)
-
-    def ripe_cells(self, state: dict) -> list[tuple[int, int, int]]:
-        if not self.field_scan:
-            return super().ripe_cells(state)
-        crop = state["job"]["crop"]
-        ripe_age = RIPE_AGE.get(crop, 7)
-        done = self.broken | self.planted | self.refused | self.unreachable
-        return [c for c, block in self.field_scan.items() if base_name(block) == crop and block_age(block) == ripe_age and c not in done]
-
-    def sweep_plots(self, state: dict) -> list[tuple[int, int, int]]:
-        if not self.field_scan:
-            return super().sweep_plots(state)
-        bare = [
-            c for c, block in self.field_scan.items()
-            if base_name(block) == "minecraft:farmland" and self.field_scan.get((c[0], c[1] + 1, c[2]), AIR) == AIR
-        ]
-        # and plots harvested with no seed left to replant them
-        bare += [(c[0], c[1] - 1, c[2]) for c in self.broken]
-        return sorted(set(bare), key=lambda c: (c[0], c[2] if c[0] % 2 == 0 else -c[2]))
-
-    def check_plot(self, state: dict, seed: str) -> dict:
-        if not self.field_scan:
-            return super().check_plot(state, seed)
-        self.sweep = [p for p in self.sweep if (p[0], p[1] + 1, p[2]) not in self.planted and p not in self.unreachable]
-        return self.plant(state, self.sweep[0], seed) if self.sweep else tool_action([0, 0, 0, 0, 0])
-
-    def survey(self, state: dict) -> dict:
-        if not self.field_scan:
-            return super().survey(state)
-        self.views = []
-        return tool_action([0, 0, 0, 0, 0])
-
-
 class DockPlanner(Planner):
     """Flies back to the charging station, the job ends once the drone docks on it"""
 
@@ -767,10 +628,6 @@ def make_planner(job: dict, mask_ids: dict, reader, schematics: Path | None = No
         return DockPlanner(mask_ids, reader=reader, core=core)
     if job["kind"] in ("copy", "build"):
         return BuildPlanner(mask_ids, reader=reader, schematics=schematics, core=core)
-    if job["kind"] == "mine":
-        return MinePlanner(mask_ids, reader=reader, schematics=schematics, core=core)
-    if job["kind"] == "patrol":
-        return PatrolPlanner(mask_ids, reader=reader, core=core)
-    if job["kind"] in ("goto", "find", "follow"):
+    if job["kind"] == "goto":
         return GotoPlanner(mask_ids, reader=reader, core=core)
-    return HarvestPlanner(mask_ids, reader=reader, schematics=schematics, core=core)
+    raise ValueError(f"no planner for a {job['kind']} job")

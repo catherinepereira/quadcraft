@@ -26,8 +26,6 @@ def rows(reports: list[Path]) -> list[str]:
         steps = sorted(r["steps"] for r in results if r["success"])
         median = steps[len(steps) // 2] if steps else "-"
         notes = []
-        if report.get("prey_killed") is not None:
-            notes.append(f"{report['prey_killed']:.0%} of prey killed")
         failures = [r["outcome"] for r in results if not r["success"]]
         if failures:
             notes.append(", ".join(f"{failures.count(o)} {o}" for o in sorted(set(failures))))

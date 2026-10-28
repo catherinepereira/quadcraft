@@ -9,18 +9,11 @@ import com.catherinepereira.quadcraft.entity.DroneEntity;
 import com.catherinepereira.quadcraft.entity.DroneItem;
 import com.catherinepereira.quadcraft.entity.DroneTier;
 import com.catherinepereira.quadcraft.entity.Drones;
-import com.catherinepereira.quadcraft.task.Arena;
-import com.catherinepereira.quadcraft.task.ArenaRecord;
 import com.catherinepereira.quadcraft.task.TaskKind;
-import com.catherinepereira.quadcraft.tool.DroneTool;
-import com.catherinepereira.quadcraft.tool.DroneTools;
-import com.catherinepereira.quadcraft.tool.ToolRequest;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Random;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
@@ -33,9 +26,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -239,14 +232,15 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			digReset.addProperty("id", id);
 			digReset.addProperty("seed", 5);
 			JsonObject digOptions = new JsonObject();
-			digOptions.addProperty("task", "find_block");
+			digOptions.addProperty("task", "gather_build");
+			digOptions.addProperty("size", 4);
 			digReset.add("options", digOptions);
 			bridge.send(digReset);
 			obs = awaitObs(ctx, bridge, id++);
 
-			// a safe region over the find job's block keeps the drone from breaking it, removing the region lets it through
-			JsonArray ore = arena(ctx, bridge).getAsJsonArray("targets").get(0).getAsJsonArray();
-			String findKind = obs.header().getAsJsonObject("state").getAsJsonObject("job").get("block").getAsString();
+			// a safe region over a block of the materials deposit keeps the drone from breaking it, removing the region lets it through
+			JsonArray deposit = obs.header().getAsJsonObject("state").getAsJsonObject("job").getAsJsonArray("gather");
+			JsonArray ore = ints(deposit.get(0).getAsInt(), deposit.get(4).getAsInt(), deposit.get(2).getAsInt());
 			JsonObject guard = msg("select");
 			guard.add("cornerA", ore);
 			guard.add("cornerB", ore);
@@ -289,171 +283,33 @@ public class DroneClientGameTest implements FabricClientGameTest {
 					ctx.takeScreenshot("quadcraft-dig-mining");
 				}
 			}
-			check(dug, "scripted miner never broke the " + findKind);
-			String loot = findKind.equals("minecraft:coal_ore") ? "minecraft:coal" : findKind;
-			check(countItem(obs.header().getAsJsonObject("state"), loot) >= 1, "no " + loot + " in the drone inventory after mining");
+			check(dug, "scripted miner never broke the deposit block at " + ore);
+			int carried = 0;
+			for (var slot : obs.header().getAsJsonObject("state").getAsJsonArray("inventory")) {
+				carried += slot.getAsJsonArray().get(1).getAsInt();
+			}
+			check(carried >= 1, "nothing in the drone inventory after mining a deposit block");
 			ctx.takeScreenshot("quadcraft-dig-done");
 
-			// the same arena rebuilt, then mined as a player's mine_region job over a box around the block
-			JsonObject digAgain = msg("reset");
-			digAgain.addProperty("id", id);
-			digAgain.addProperty("seed", 5);
-			digAgain.add("options", digOptions);
-			bridge.send(digAgain);
-			obs = awaitObs(ctx, bridge, id++);
-			int ox = ore.get(0).getAsInt();
-			int oy = ore.get(1).getAsInt();
-			int oz = ore.get(2).getAsInt();
-			JsonObject mineJob = msg("reset");
-			mineJob.addProperty("id", id);
-			JsonObject mineOptions = new JsonObject();
-			mineOptions.addProperty("task", "mine_region");
-			// two kinds, only the found block's is in the box, so the job is done once it's out
-			mineOptions.addProperty("blocks", findKind + ", minecraft:iron_ore");
-			mineOptions.add("region", ints(ox - 1, oy - 1, oz - 1, ox + 1, oy + 1, oz + 1));
-			mineJob.add("options", mineOptions);
-			bridge.send(mineJob);
-			obs = awaitObs(ctx, bridge, id++);
-			JsonObject mine = obs.header().getAsJsonObject("state").getAsJsonObject("job");
-			check(mine != null && mine.get("kind").getAsString().equals("mine"), "expected a mine job, got " + mine);
-			check(mine.getAsJsonArray("blocks").size() == 2, "expected both kinds in the mine job, got " + mine);
-			boolean mined = false;
-			for (int i = 0; i < 400 && !mined; i++) {
-				JsonObject step = msg("step");
-				step.addProperty("id", id);
-				step.add("action", digActionAt(obs.header().getAsJsonObject("state"), ore));
-				bridge.send(step);
-				obs = awaitObs(ctx, bridge, id++);
-				mined = obs.header().getAsJsonObject("episode").get("success").getAsBoolean();
-			}
-			check(mined, "mine_region job never finished, metrics " + obs.header().getAsJsonObject("episode").get("metrics"));
-
-			JsonObject farmReset = msg("reset");
-			farmReset.addProperty("id", id);
-			farmReset.addProperty("seed", 13);
-			JsonObject farmOptions = new JsonObject();
-			farmOptions.addProperty("task", "harvest_crops");
-			farmReset.add("options", farmOptions);
-			bridge.send(farmReset);
-			obs = awaitObs(ctx, bridge, id++);
-			JsonObject farm = obs.header().getAsJsonObject("state").getAsJsonObject("job");
-			JsonArray farmMetrics = obs.header().getAsJsonObject("episode").getAsJsonArray("metrics");
-			check(farm != null && farm.get("kind").getAsString().equals("harvest"), "expected a harvest job, got " + farm);
-			check(farmMetrics.get(0).getAsInt() >= 2 && farmMetrics.get(3).getAsInt() >= 1 && farmMetrics.get(4).getAsInt() >= 20, "farm metrics " + farmMetrics);
-			check(countItem(obs.header().getAsJsonObject("state"), "minecraft:wheat_seeds") == 4, "the drone should start with 4 wheat seeds");
-			ctx.takeScreenshot("quadcraft-harvest-crops");
-
-			// patrol_area hands the drone its floor's patrol cells, the client counts the cells it flies over
-			JsonObject patrolReset = msg("reset");
-			patrolReset.addProperty("id", id);
-			patrolReset.addProperty("seed", 17);
-			JsonObject patrolOptions = new JsonObject();
-			patrolOptions.addProperty("task", "patrol_area");
-			patrolReset.add("options", patrolOptions);
-			bridge.send(patrolReset);
-			obs = awaitObs(ctx, bridge, id++);
-			JsonObject patrol = obs.header().getAsJsonObject("state").getAsJsonObject("job");
-			JsonObject patrolled = obs.header().getAsJsonObject("episode").getAsJsonObject("patrol");
-			check(patrol != null && patrol.get("kind").getAsString().equals("patrol") && !patrol.get("hunt").getAsBoolean(), "expected a patrol job, got " + patrol);
-			check(patrolled != null && patrolled.get("cells").getAsInt() == patrol.getAsJsonArray("cells").size() && patrolled.get("rounds").getAsInt() == 1, "patrol progress " + patrolled);
-
-			// hunt_mobs walls in hostile mobs and animals. Hunting the hostile ones, the attack beam leaves an animal alone and kills a hostile mob
-			JsonObject huntReset = msg("reset");
-			huntReset.addProperty("id", id);
-			huntReset.addProperty("seed", 21);
-			JsonObject huntOptions = new JsonObject();
-			huntOptions.addProperty("task", "hunt_mobs");
-			huntOptions.addProperty("prey", "hostile");
-			huntReset.add("options", huntOptions);
-			bridge.send(huntReset);
-			obs = awaitObs(ctx, bridge, id++);
-			JsonObject hunt = obs.header().getAsJsonObject("state").getAsJsonObject("job");
-			check(hunt != null && hunt.get("hunt").getAsBoolean() && hunt.get("rounds").getAsInt() == 0 && hunt.get("prey").getAsString().equals("hostile"), "expected a hunt job, got " + hunt);
-			ctx.takeScreenshot("quadcraft-hunt-mobs");
-			String huntProblem = world.getServer().computeOnServer(server -> {
+			// only mobs hurt a drone, and an arena's drone is wrecked where it would die
+			String hurtProblem = world.getServer().computeOnServer(server -> {
 				ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
 				DroneEntity drone = Drones.active(player);
 				ServerLevel level = player.level();
-				ArenaRecord arena = Arena.record(drone);
-				List<Mob> mobs = level.getEntitiesOfClass(Mob.class, drone.getBoundingBox().inflate(48), m -> m.entityTags().contains("quadcraft_arena"));
-				Mob hostile = mobs.stream().filter(m -> m instanceof Enemy).findFirst().orElse(null);
-				Mob animal = mobs.stream().filter(m -> !(m instanceof Enemy)).findFirst().orElse(null);
-				if (hostile == null || animal == null || arena.metrics(level, drone)[0] != 4) {
-					return "the hunt arena has " + mobs.size() + " mobs, metrics " + Arrays.toString(arena.metrics(level, drone));
-				}
-				lookDownAt(drone, animal);
-				String spared = DroneTools.apply(drone, 0, new ToolRequest(DroneTool.ATTACK, 0, 0, 0, -1, 0)).events();
-				if (!spared.contains("not a target")) {
-					return "hitting a " + animal.getType() + " gave " + spared;
-				}
-				String hits = "";
-				// held on the mob, the beam locks on and fires every time it charges
-				for (int i = 0; i < 200 && hostile.isAlive(); i++) {
-					lookDownAt(drone, hostile);
-					hits = DroneTools.apply(drone, i, new ToolRequest(DroneTool.ATTACK, 0, 0, 0, -1, 0)).events();
-				}
-				int[] score = arena.metrics(level, drone);
-				// the beam is a mob attack from the drone, so a mob it hits turns on it
-				Mob other = mobs.stream().filter(m -> m instanceof Enemy && m != hostile).findFirst().orElse(null);
-				lookDownAt(drone, other);
-				for (int i = 0; i < DroneTools.BEAM_CHARGE; i++) {
-					DroneTools.apply(drone, i, new ToolRequest(DroneTool.ATTACK, 0, 0, 0, -1, 0));
-				}
-				if (other.getLastHurtByMob() != drone) {
-					return "the " + other.getType() + " the beam hit didn't take the drone for its attacker";
-				}
-				// only mobs hurt a drone, and an arena's drone is wrecked where it would die
 				if (drone.hurtServer(level, level.damageSources().playerAttack(player), 5.0F)) {
 					return "a player hurt the drone";
 				}
-				drone.hurtServer(level, level.damageSources().mobAttack(other), 100.0F);
+				Mob zombie = EntityTypes.ZOMBIE.create(level, EntitySpawnReason.COMMAND);
+				drone.hurtServer(level, level.damageSources().mobAttack(zombie), 100.0F);
 				if (!drone.isAlive() || !drone.wrecked()) {
 					return "100 damage from a mob left the drone " + (drone.isAlive() ? "unwrecked" : "dead");
 				}
 				drone.repair();
-				return !hostile.isAlive() && score[0] == 3 && score[1] == 1 ? "" : "the drone didn't kill the " + hostile.getType() + ", metrics " + Arrays.toString(score) + ", last hit " + hits;
+				return "";
 			});
-			check(huntProblem.isEmpty(), huntProblem);
+			check(hurtProblem.isEmpty(), hurtProblem);
 
-			// hunting cows, the beam leaves hostile mobs alone and kills a cow
-			JsonObject cowReset = msg("reset");
-			cowReset.addProperty("id", id);
-			cowReset.addProperty("seed", 22);
-			JsonObject cowOptions = new JsonObject();
-			cowOptions.addProperty("task", "hunt_mobs");
-			cowOptions.addProperty("prey", "cow");
-			cowReset.add("options", cowOptions);
-			bridge.send(cowReset);
-			obs = awaitObs(ctx, bridge, id++);
-			JsonObject cowHunt = obs.header().getAsJsonObject("state").getAsJsonObject("job");
-			check(cowHunt != null && cowHunt.get("prey").isJsonArray() && cowHunt.getAsJsonArray("prey").get(0).getAsString().equals("minecraft:cow"), "expected a cow hunt, got " + cowHunt);
-			String cowProblem = world.getServer().computeOnServer(server -> {
-				ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
-				DroneEntity drone = Drones.active(player);
-				ServerLevel level = player.level();
-				ArenaRecord arena = Arena.record(drone);
-				List<Mob> mobs = level.getEntitiesOfClass(Mob.class, drone.getBoundingBox().inflate(48), m -> m.entityTags().contains("quadcraft_arena"));
-				Mob cow = mobs.stream().filter(m -> m.getType() == EntityTypes.COW).findFirst().orElse(null);
-				Mob hostile = mobs.stream().filter(m -> m instanceof Enemy).findFirst().orElse(null);
-				int[] start = arena.metrics(level, drone);
-				if (cow == null || hostile == null || start[0] < 1 || start[0] != start[2]) {
-					return "the cow hunt has " + mobs.size() + " mobs, metrics " + Arrays.toString(start);
-				}
-				lookDownAt(drone, hostile);
-				String spared = DroneTools.apply(drone, 0, new ToolRequest(DroneTool.ATTACK, 0, 0, 0, -1, 0)).events();
-				if (!spared.contains("not a target")) {
-					return "hitting a " + hostile.getType() + " on a cow hunt gave " + spared;
-				}
-				for (int i = 0; i < 200 && cow.isAlive(); i++) {
-					lookDownAt(drone, cow);
-					DroneTools.apply(drone, i, new ToolRequest(DroneTool.ATTACK, 0, 0, 0, -1, 0));
-				}
-				int[] score = arena.metrics(level, drone);
-				return !cow.isAlive() && score[0] == start[0] - 1 && score[1] == 1 ? "" : "the drone didn't kill the cow, metrics " + Arrays.toString(score);
-			});
-			check(cowProblem.isEmpty(), cowProblem);
-
-			// goto_point gives coordinates, find_block names a block among look-alikes, follow_mob hands over where a villager is
+			// goto_point gives coordinates
 			JsonObject gotoReset = msg("reset");
 			gotoReset.addProperty("id", id);
 			gotoReset.addProperty("seed", 23);
@@ -464,19 +320,6 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			obs = awaitObs(ctx, bridge, id++);
 			JsonObject gotoJob = obs.header().getAsJsonObject("state").getAsJsonObject("job");
 			check(gotoJob != null && gotoJob.get("kind").getAsString().equals("goto") && gotoJob.getAsJsonArray("point").size() == 3, "expected a goto job, got " + gotoJob);
-
-			JsonObject findReset = msg("reset");
-			findReset.addProperty("id", id);
-			findReset.addProperty("seed", 29);
-			JsonObject findOptions = new JsonObject();
-			findOptions.addProperty("task", "find_block");
-			findReset.add("options", findOptions);
-			bridge.send(findReset);
-			obs = awaitObs(ctx, bridge, id++);
-			JsonObject findJob = obs.header().getAsJsonObject("state").getAsJsonObject("job");
-			JsonObject findArena = arena(ctx, bridge);
-			check(findJob != null && findJob.get("kind").getAsString().equals("find") && findArena.getAsJsonArray("targets").size() == 1
-				&& findArena.getAsJsonArray("distractors").size() == 3, "expected a find job with one target and three look-alikes, got " + findJob);
 
 			// dock_station puts a charging station in the arena, the episode succeeds once the drone rests on it
 			JsonObject dockReset = msg("reset");
@@ -502,19 +345,6 @@ public class DroneClientGameTest implements FabricClientGameTest {
 				arenaDocked = obs.header().getAsJsonObject("episode").get("success").getAsBoolean();
 			}
 			check(arenaDocked, "dock_station never docked, drone at " + obs.header().getAsJsonObject("state").get("pos") + ", station " + stationJson);
-
-			JsonObject followReset = msg("reset");
-			followReset.addProperty("id", id);
-			followReset.addProperty("seed", 31);
-			JsonObject followOptions = new JsonObject();
-			followOptions.addProperty("task", "follow_mob");
-			followReset.add("options", followOptions);
-			bridge.send(followReset);
-			obs = awaitObs(ctx, bridge, id++);
-			JsonObject followState = obs.header().getAsJsonObject("state");
-			JsonObject followJob = followState.getAsJsonObject("job");
-			check(followJob.get("kind").getAsString().equals("follow") && followJob.has("entity") && !followState.has("followTarget"), "expected a follow job naming its target's kind and no target position, got " + followState);
-			ctx.takeScreenshot("quadcraft-follow-mob");
 
 			ctx.setScreen(() -> new JobScreen(runtime));
 			ctx.waitTicks(5);
@@ -682,10 +512,11 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			check(secondWelcome.get("role").getAsString().equals("controller") && secondWelcome.get("drone").getAsInt() == scout[0], "the scout's controller got " + secondWelcome);
 
 			JsonArray scoutOre = ints(scout[1], scout[2], scout[3]);
+			// a copy of one cell of air onto the coal ore, so the scout's job is done once it clears the ore
 			JsonObject scoutOptions = new JsonObject();
-			scoutOptions.addProperty("task", "mine_region");
-			scoutOptions.addProperty("blocks", "coal_ore");
-			scoutOptions.add("region", ints(scout[1] - 1, scout[2] - 1, scout[3] - 1, scout[1] + 1, scout[2] + 1, scout[3] + 1));
+			scoutOptions.addProperty("task", "copy_region");
+			scoutOptions.add("source", ints(scout[1], scout[2] + 6, scout[3], scout[1], scout[2] + 6, scout[3]));
+			scoutOptions.add("dest", scoutOre);
 			JsonObject scoutJob = msg("reset");
 			scoutJob.addProperty("id", id);
 			scoutJob.add("options", scoutOptions);
@@ -781,7 +612,7 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			scoutAgain.send(secondHello);
 			awaitText(ctx, scoutAgain, "welcome");
 			int scoutReset = id++;
-			scoutAgain.send(fleetReset(scoutReset, "find_block", 1));
+			scoutAgain.send(fleetReset(scoutReset, "dock_station", 1));
 			ctx.waitTicks(20);
 			check(scoutAgain.frames.isEmpty(), "a fleet reset was answered before the whole fleet asked");
 			int mainReset = id++;
@@ -792,7 +623,7 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			JsonObject scoutArena = arena(ctx, scoutAgain);
 			check(droneId(mainFleet) == mainDrone && droneId(scoutFleet) == scout[0], "the fleet answered with drones " + droneId(mainFleet) + " and " + droneId(scoutFleet));
 			check(mainArena.get("origin").equals(scoutArena.get("origin")) && mainArena.get("radius").equals(scoutArena.get("radius")), "the fleet got two arenas, " + mainArena.get("origin") + " and " + scoutArena.get("origin"));
-			check(mainArena.get("task").getAsString().equals("goto_point") && scoutArena.get("task").getAsString().equals("find_block"), "the fleet's tasks got mixed up");
+			check(mainArena.get("task").getAsString().equals("goto_point") && scoutArena.get("task").getAsString().equals("dock_station"), "the fleet's tasks got mixed up");
 			check(mainArena.get("radius").getAsInt() > 12, "the shared arena didn't grow for two drones, radius " + mainArena.get("radius"));
 			for (BridgeTestClient client : new BridgeTestClient[] {bridge, scoutAgain}) {
 				JsonObject step = msg("step");
@@ -1056,12 +887,6 @@ public class DroneClientGameTest implements FabricClientGameTest {
 			return false;
 		}, 200);
 		return found[0];
-	}
-
-	// holds the drone two blocks over the mob's middle, looking straight down at it
-	private static void lookDownAt(DroneEntity drone, Mob mob) {
-		Vec3 middle = mob.getBoundingBox().getCenter();
-		drone.snapTo(middle.x, middle.y + 2.0 - drone.getEyeHeight(), middle.z, 0.0F, 90.0F);
 	}
 
 	private static JsonArray ints(int... values) {

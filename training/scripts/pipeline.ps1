@@ -1,19 +1,17 @@
 # The training pipeline, the -Stages given in this order, each after the one before, a failed stage stops the run
 #   render    block frames drawn offline from the game's own models, on the GPU without the game (data/render)
 #   studio    game frames of mobs and of the blocks the renderer can't draw (data/studio)
-#   fields    game frames of harvest arena wheat fields (data/fields)
-#   reader    the block reader, from ImageNet weights on studio and render frames to checkpoints/reader-base.pt,
-#             then fine-tuned with the field frames into checkpoints/reader.pt
-#             With -FineTune it fine-tunes the current reader.pt instead and promotes the result only when it reads
-#             -ReaderClass better on the same validation frames, see train.promote_reader
+#   reader    the block reader, from ImageNet weights on studio and render frames to checkpoints/reader.pt
+#             With -FineTune it fine-tunes the current reader.pt instead and promotes the result only when it scores
+#             better on the same validation frames, on -ReaderClass when one is named, see train.promote_reader
 #   goto      the next DAgger round of the goto policy, see dagger_goto.ps1
 #   skill     the next DAgger round of the cell skill, see dagger_skill.ps1
 #   evaluate  the whole drone on every training arena, see evaluate.ps1
 # The game starts for the stages that need it and closes before the reader trains, which wants the whole GPU
 # Logs go to logs/pipeline-<time>.log, each step's full output to logs/<step>.log
 param(
-  [string[]]$Stages = @("render", "studio", "fields", "reader", "goto", "skill", "evaluate"),
-  [switch]$FineTune, [string]$ReaderClass = "minecraft:wheat", [int]$EvalEpisodes = 5
+  [string[]]$Stages = @("render", "studio", "reader", "goto", "skill", "evaluate"),
+  [switch]$FineTune, [string]$ReaderClass = "", [int]$EvalEpisodes = 5
 )
 $d = Split-Path $PSScriptRoot -Parent
 $py = "$d\.venv\Scripts\python.exe"
@@ -71,24 +69,18 @@ foreach ($stage in $Stages) {
       GameUp
       if (-not (Step "collect-studio" @("-m", "drone_model.collect.studio"))) { Finish "studio collection failed" }
     }
-    "fields" {
-      GameUp
-      if (-not (Step "collect-fields" @("-m", "drone_model.collect.fields"))) { Finish "field collection failed" }
-    }
     "reader" {
       GameDown
-      $all = @("--data", "data\studio", "data\render", "data\fields")
+      $data = @("--data", "data\studio", "data\render")
       if ($FineTune) {
-        $train = @("-m", "drone_model.train.reader") + $all + @("--init", "checkpoints\reader.pt", "--baseline", "checkpoints\reader.pt",
+        $train = @("-m", "drone_model.train.reader") + $data + @("--init", "checkpoints\reader.pt", "--baseline", "checkpoints\reader.pt",
           "--steps", "15000", "--lr", "3e-4", "--out", "checkpoints\reader-candidate.pt")
         if (-not (Step "reader-candidate" $train)) { Finish "reader fine-tune failed" }
-        Step "reader-promote" @("-m", "drone_model.train.promote_reader", "checkpoints\reader-candidate.pt", "--class", $ReaderClass) | Out-Null
+        $promote = @("-m", "drone_model.train.promote_reader", "checkpoints\reader-candidate.pt") + $(if ($ReaderClass) { @("--class", $ReaderClass) } else { @() })
+        Step "reader-promote" $promote | Out-Null
       } else {
-        $base = @("-m", "drone_model.train.reader", "--data", "data\studio", "data\render", "--steps", "60000", "--out", "checkpoints\reader-base.pt")
-        if (-not (Step "reader-base" $base)) { Finish "reader base training failed" }
-        $tune = @("-m", "drone_model.train.reader") + $all + @("--init", "checkpoints\reader-base.pt", "--baseline", "checkpoints\reader-base.pt",
-          "--steps", "15000", "--lr", "3e-4", "--out", "checkpoints\reader.pt")
-        if (-not (Step "reader" $tune)) { Finish "reader fine-tune failed" }
+        $train = @("-m", "drone_model.train.reader") + $data + @("--steps", "60000", "--out", "checkpoints\reader.pt")
+        if (-not (Step "reader" $train)) { Finish "reader training failed" }
       }
     }
     "goto" {

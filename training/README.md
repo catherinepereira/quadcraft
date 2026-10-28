@@ -1,6 +1,6 @@
 # training
 
-Two Python packages. `quadcraft` is the client for the mod's bridge: a Gymnasium env for every task, a loader for recorded episodes, and `.schem` files. `drone_model` is the drone itself: the perception core with the block reader, the planners, the learned policies and the framework that trains them, and the brain that flies the player's jobs. How the models work and train is in [docs/TRAINING.md](../docs/TRAINING.md), results in [RESULTS.md](RESULTS.md).
+Two Python packages. `quadcraft` is the client for the mod's bridge: a Gymnasium env for every task, a loader for recorded episodes, and `.schem` files. `drone_model` is the drone itself: the perception core with the block reader, the planners, the learned policies and the framework that trains them, and the brain that flies the player's copy and build jobs. How the models work and train is in [docs/TRAINING.md](../docs/TRAINING.md), results in [RESULTS.md](RESULTS.md).
 
 ## Setup
 
@@ -18,12 +18,12 @@ The brain, collection, and evaluation need the game running with the mod and a w
 src/quadcraft/                 bridge client, Gymnasium env, episode loader, schematic files
 src/drone_model/brain.py       flies the player's jobs, and the training arenas for evaluation
 src/drone_model/energy.py      learned job costs, and the battery keeper that flies home to charge
-src/drone_model/perception/    the perception core: block reader, voxel memory, world map, mob tracker
+src/drone_model/perception/    the perception core: block reader, voxel memory, world map
 src/drone_model/scripted/      the planners: the shared Planner, A* routes, one planner per kind of job
 src/drone_model/policies/      the goto policy and the cell skill, each a framework spec
 src/drone_model/framework/     every policy's collection, training, and evaluation
 src/drone_model/render/        the offline block renderer
-src/drone_model/collect/       block reader frames: rendered, studio, and field
+src/drone_model/collect/       block reader frames: rendered and studio
 src/drone_model/train/         block reader training and promotion
 src/drone_model/evaluate/      reader checks, the evaluation summary, smoothness, embeddings, MP4s
 scripts/                       the training pipeline, DAgger rounds, and the evaluation run
@@ -33,8 +33,8 @@ tests/
 Generated files stay in this folder and are gitignored:
 
 ```
-checkpoints/   reader.pt, reader-base.pt, goto.pt, skill.pt, energy.json, each with a JSON training report
-data/          reader frames in render/, studio/, and fields/, policy episodes in policies/<policy>/<run>/
+checkpoints/   reader.pt, goto.pt, skill.pt, energy.json, each with a JSON training report
+data/          reader frames in render/ and studio/, policy episodes in policies/<policy>/<run>/
 reports/       evaluation reports in brain/, eval/, and reader/
 logs/          pipeline logs
 ```
@@ -43,9 +43,9 @@ logs/          pipeline logs
 
 ```powershell
 .venv\Scripts\python -m drone_model.brain                                                          # fly every job started in game or on the dashboard
-.venv\Scripts\python -m drone_model.brain --task hunt_mobs --terrain rough --episodes 5            # evaluate on a training arena
+.venv\Scripts\python -m drone_model.brain --task gather_build --size 4 --episodes 5                # evaluate on a training arena
 .venv\Scripts\python -m drone_model.brain --task copy_build --size 8 --perception scan --episodes 3
-.venv\Scripts\python -m drone_model.brain --fleet replicate_build,harvest_crops --episodes 5       # one drone per task in a shared arena
+.venv\Scripts\python -m drone_model.brain --fleet replicate_build,dock_station --episodes 5        # one drone per task in a shared arena
 .venv\Scripts\python -m drone_model.brain --task replicate_build --scripted                        # the planners' scripted controller in place of the learned policies
 ```
 
@@ -65,13 +65,12 @@ With the drone's battery on and its home station inside the job's geofence, a ba
 .venv\Scripts\python -m drone_model.collect.render                     # rendered block frames, data/render, no game
 .venv\Scripts\python -m drone_model.collect.render --preview 12        # a sheet of rendered frames beside their labels
 .venv\Scripts\python -m drone_model.collect.studio                     # game frames of mobs and the blocks the renderer can't draw, data/studio
-.venv\Scripts\python -m drone_model.collect.fields                     # game frames of harvest arena wheat fields, data/fields
-.venv\Scripts\python -m drone_model.train.reader --data data\studio data\render --steps 60000 --out checkpoints\reader-base.pt
-.venv\Scripts\python -m drone_model.train.reader --data data\studio data\render data\fields --init checkpoints\reader-base.pt --baseline checkpoints\reader-base.pt --steps 15000 --lr 3e-4 --out checkpoints\reader.pt
-.venv\Scripts\python -m drone_model.train.promote_reader checkpoints\reader-candidate.pt --class minecraft:wheat
-powershell -File scripts\dagger_goto.ps1 -Round 6                      # a goto DAgger round
-powershell -File scripts\dagger_skill.ps1 -Round 12 -Tasks hunt_mobs   # a skill DAgger round on some tasks
-.venv\Scripts\python -m drone_model.framework.collect --policy skill --task hunt_mobs --episodes 40
+.venv\Scripts\python -m drone_model.train.reader --data data\studio data\render --steps 60000 --out checkpoints\reader.pt
+.venv\Scripts\python -m drone_model.train.reader --data data\studio data\render --init checkpoints\reader.pt --baseline checkpoints\reader.pt --steps 15000 --lr 3e-4 --out checkpoints\reader-candidate.pt
+.venv\Scripts\python -m drone_model.train.promote_reader checkpoints\reader-candidate.pt
+powershell -File scripts\dagger_goto.ps1 -Round 6                         # a goto DAgger round
+powershell -File scripts\dagger_skill.ps1 -Round 12 -Tasks gather_build   # a skill DAgger round on some tasks
+.venv\Scripts\python -m drone_model.framework.collect --policy skill --task gather_build --size 4 --episodes 40
 .venv\Scripts\python -m drone_model.framework.train --policy skill
 ```
 
@@ -82,11 +81,11 @@ With the game running, `python -m drone_model.perception.classes` rebuilds the r
 ```powershell
 powershell -File scripts\evaluate.ps1 -Episodes 5                                               # the brain on every training arena, then the summary table
 .venv\Scripts\python -m drone_model.evaluate.summary                                            # the table from the newest reports
-.venv\Scripts\python -m drone_model.framework.evaluate --policy goto --task find_block --terrain rough --episodes 10
-.venv\Scripts\python -m drone_model.framework.evaluate --policy skill --task hunt_mobs --teacher   # the scripted controller, for comparison
+.venv\Scripts\python -m drone_model.framework.evaluate --policy goto --task dock_station --terrain rough --episodes 10
+.venv\Scripts\python -m drone_model.framework.evaluate --policy skill --task copy_build --teacher   # the scripted controller, for comparison
 .venv\Scripts\python -m drone_model.evaluate.reader --episodes 10                               # the core's read of reference builds, cell by cell
-.venv\Scripts\python -m drone_model.evaluate.smoothness --policy goto --task find_block --terrain rough
-.venv\Scripts\python -m drone_model.evaluate.video --policy goto --task find_block --terrain rough   # MP4, the chase camera beside the drone's own
+.venv\Scripts\python -m drone_model.evaluate.smoothness --policy goto --task dock_station --terrain rough
+.venv\Scripts\python -m drone_model.evaluate.video --policy skill --task copy_build   # MP4, the chase camera beside the drone's own
 .venv\Scripts\python -m drone_model.evaluate.embeddings --checkpoint checkpoints\reader.pt --dest <folder>
 ```
 
@@ -117,7 +116,7 @@ env.close()
 
 `record=True` saves episodes to the training data, `record="test"` to the game's `quadcraft/test-recordings` for runs that shouldn't train anything. Recording stops when the env closes.
 
-The env's action is a dict: `move` (`[forward, right, up, yaw, pitch]` in [-1, 1], with yaw and pitch scaled to 15 degrees per tick), `tool` (an index into `quadcraft.protocol.TOOLS`, `attack` holds the beam), `slot`, and `transfer` (`[kind, slot]`, kind 1 stores a drone stack in the open container, 2 takes one out). An optional `block`, such as `"minecraft:bricks"`, names the block to place, and the drone uses whichever slot holds it.
+The env's action is a dict: `move` (`[forward, right, up, yaw, pitch]` in [-1, 1], with yaw and pitch scaled to 15 degrees per tick), `tool` (an index into `quadcraft.protocol.TOOLS`), `slot`, and `transfer` (`[kind, slot]`, kind 1 stores a drone stack in the open container, 2 takes one out). An optional `block`, such as `"minecraft:bricks"`, names the block to place, and the drone uses whichever slot holds it.
 
 Observations hold the image streams, a 6-value state vector (velocity, sin and cos of yaw, pitch), `bounds`, the drone's position inside the geofence from -1 to 1 per axis, and `range`, the range sensors ahead and below as a share of their reach, 1 when nothing is in range. Tool tasks add `inventory` and `container` as `[item index, count]` per slot (indices into `DroneClient.item_ids`) and `tool_state` (mining progress, container open, selected slot). Leaving the geofence, or the drone getting wrecked by mobs, ends the episode as a failure, and `info["episode"]` tells them apart. Jobs put the drone's instruction in `info["state"]["job"]`, see [docs/PROTOCOL.md](../docs/PROTOCOL.md).
 

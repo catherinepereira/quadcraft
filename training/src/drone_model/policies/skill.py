@@ -1,7 +1,6 @@
 """
-The cell skill: one learned controller for every job. Given a goal (look at a point from a viewpoint, break or
-place at a point, or hit the mob at a point) it flies, aims, and decides when to fire the tool, from the camera image
-and depth alone.
+The cell skill: one learned controller for every build. Given a goal (look at a point from a viewpoint, or break or
+place at a point) it flies, aims, and decides when to fire the tool, from the camera image and depth alone.
 A planner (the experts' decide logic over the voxel memory) picks the goals
 """
 
@@ -18,8 +17,8 @@ from ..framework.spec import Agent, PolicySpec, Step
 from ..torch_utils import load_weights, pick_device
 from .features import DEPTH_MAX, STATE_DIM, conv, frame_features, state_features
 
-MODES = ("view", "break", "place", "attack")
-GOAL_DIM = 11
+MODES = ("view", "break", "place")
+GOAL_DIM = 10
 GOAL_SCALE = 8.0
 
 
@@ -142,7 +141,7 @@ class SkillSpec(PolicySpec):
         if intent is None:
             return None
         rgb, depth = frame(step.obs)
-        fired = TOOLS[step.label["tool"]] in ("break", "place", "attack")
+        fired = TOOLS[step.label["tool"]] in ("break", "place")
         return {
             "rgb": rgb, "depth": depth, "state": state_features(step.state), "goal": goal_features(step.state, intent),
             "move": np.asarray(step.label["move"], dtype=np.float32), "fire": np.float32(1.0 if fired else 0.0),

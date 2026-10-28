@@ -1,7 +1,7 @@
 """
 The goto policy: learned flight to a goal point, around pillars, trees, terrain, and cave roofs, from the camera image,
-depth, the range sensors, and the drone's motion. The goto planner (scripted.goto) names the goal: a point given as
-coordinates, a spot over a block it found, a place a few blocks from someone it follows, or the next search point
+depth, the range sensors, and the drone's motion. It flies the drone home to its charging station, and trains on
+points given as coordinates (scripted.goto) and docking (scripted.jobs.DockPlanner)
 """
 
 from __future__ import annotations
@@ -22,11 +22,10 @@ from .features import STATE_DIM as BASE_STATE_DIM
 from .features import conv, state_features
 from .skill import frame
 
-MODES = ("goto", "follow", "explore")
 GOAL_SCALE = 8.0
-# the goal relative to the camera in the heading frame (3), its distance across the ground and bearing, how far off to
-# hold (standoff, hover), and the mode
-GOAL_DIM = 3 + 2 + 2 + len(MODES)
+# the goal relative to the camera in the heading frame (3), its distance across the ground and bearing, and how far off
+# to hold (standoff, hover)
+GOAL_DIM = 3 + 2 + 2
 # the state vector plus the front and down range sensors
 STATE_DIM = BASE_STATE_DIM + 2
 
@@ -39,10 +38,9 @@ def goal_features(state: dict, intent: dict) -> np.ndarray:
     forward = d[0] * -math.sin(yaw) + d[2] * math.cos(yaw)
     right = d[0] * -math.cos(yaw) + d[2] * -math.sin(yaw)
     across = math.hypot(d[0], d[2])
-    mode = [1.0 if intent["mode"] == m else 0.0 for m in MODES]
     return np.asarray(
         [forward / GOAL_SCALE, right / GOAL_SCALE, d[1] / GOAL_SCALE, min(across, 32.0) / GOAL_SCALE, math.atan2(right, forward) / math.pi,
-         intent["standoff"] / GOAL_SCALE, intent["hover"] / GOAL_SCALE, *mode],
+         intent["standoff"] / GOAL_SCALE, intent["hover"] / GOAL_SCALE],
         dtype=np.float32,
     )
 

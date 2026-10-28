@@ -8,8 +8,6 @@ import com.catherinepereira.quadcraft.net.ResetTaskPayload;
 import com.catherinepereira.quadcraft.net.TaskReadyPayload;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -24,7 +22,7 @@ public final class PlayerJobs {
 	}
 
 	/**
-	 * A copy, build, mine, harvest, patrol, guard, fly-to, seek, follow, or return-home job in the player's own world: nothing is built or cleared, the drone keeps its inventory, and
+	 * A copy, build, or return-home job in the player's own world: nothing is built or cleared, the drone keeps its inventory, and
 	 * the player stays put. Every box has to be within JOB_REACH of the player, which keeps it in loaded chunks
 	 */
 	static TaskReadyPayload start(ServerPlayer player, ResetTaskPayload req, TaskKind kind) {
@@ -37,8 +35,6 @@ public final class PlayerJobs {
 		BlockPos b = new BlockPos(r[3], r[4], r[5]);
 		BlockPos dest = new BlockPos(r[6], r[7], r[8]);
 		DroneEntity drone = Drones.resolve(player, req.droneId());
-		// where a search's blocks are, for the client's scoring only, the drone finds them with its camera
-		List<BlockPos> found = new ArrayList<>();
 		DroneJob job = switch (kind) {
 			case RETURN_HOME -> {
 				if (drone == null || drone.home() == null) {
@@ -55,12 +51,6 @@ public final class PlayerJobs {
 					throw new IllegalArgumentException("could not read " + req.subject() + ": " + e.getMessage(), e);
 				}
 			}
-			case MINE_REGION -> MineJob.start(level, a, b, req.subject(), drone != null ? drone.tier() : DroneTier.COPPER);
-			case HARVEST_REGION -> HarvestJob.start(level, a, b, req.subject());
-			case PATROL_REGION, GUARD_REGION -> PatrolJob.start(level, a, b, req.subject(), kind == TaskKind.GUARD_REGION, Prey.parse(req.prey()));
-			case FLY_TO -> GotoJob.point(dest);
-			case SEEK_BLOCK -> GotoJob.block(level, a, b, req.subject(), found);
-			case FOLLOW_PLAYER -> GotoJob.follow(player, 0, null);
 			default -> throw new IllegalArgumentException(kind.id + " is not a job");
 		};
 		if (r.length == 15) {
@@ -100,7 +90,6 @@ public final class PlayerJobs {
 		}
 		ArenaRecord record = new ArenaRecord(kind, corners[0], 0);
 		record.job = job;
-		record.targets.addAll(found);
 		record.tier = drone.tier();
 		if (req.scan()) {
 			record.scan = Scans.write(level, job, kind.id + "-" + Long.toHexString(req.seed()));
@@ -145,7 +134,7 @@ public final class PlayerJobs {
 	private static void gather(BuildJob job, BlockPos a, BlockPos b) {
 		BlockPos min = BlockPos.min(a, b);
 		BlockPos max = BlockPos.max(a, b);
-		DroneJob.checkSize(max.subtract(min).offset(1, 1, 1), MineJob.MAX_SIDE, "gather region");
+		DroneJob.checkSize(max.subtract(min).offset(1, 1, 1), BuildJob.GATHER_MAX_SIDE, "gather region");
 		if (job.sourceMin != null && DroneJob.overlaps(min, max, job.sourceMin, job.sourceMin.offset(job.target.size()).offset(-1, -1, -1))) {
 			throw new IllegalArgumentException("the gather region overlaps the copy's source, which the drone doesn't mine");
 		}

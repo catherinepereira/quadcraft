@@ -6,16 +6,14 @@ import { Button, Card, Field, inputClass } from "./ui";
 const LOOK = 6;
 const TASKS = [
   "replicate_build",
-  "harvest_crops",
-  "patrol_area",
-  "hunt_mobs",
+  "copy_build",
+  "schematic_build",
+  "gather_build",
   "goto_point",
-  "find_block",
-  "follow_mob",
   "dock_station",
 ];
 
-// WASD moves, space and shift climb and descend, arrow keys turn, F held mines, V held hits a hostile mob, G places,
+// WASD moves, space and shift climb and descend, arrow keys turn, F held mines, G places,
 // R opens or closes a container
 function keysToAction(
   keys: Set<string>,
@@ -26,7 +24,6 @@ function keysToAction(
   const k = (code: string) => (keys.has(code) ? 1 : 0);
   let tool: Tool = "none";
   if (keys.has("KeyF")) tool = "break";
-  else if (keys.has("KeyV")) tool = "attack";
   else if (tapped.has("KeyG")) tool = "place";
   else if (tapped.has("KeyR")) tool = containerOpen ? "close" : "open";
   return {
@@ -62,7 +59,6 @@ export function ControlPanel() {
   const [droneName, setDroneName] = useState("");
   const [task, setTask] = useState("goto_point");
   const [terrain, setTerrain] = useState("flat");
-  const [targets, setTargets] = useState(1);
   const tapped = useRef(new Set<string>());
   const containerOpen = !!latest?.state.container;
   const slot = latest?.state.selectedSlot ?? 0;
@@ -187,16 +183,6 @@ export function ControlPanel() {
               <option>cave</option>
             </select>
           </Field>
-          <Field label="Targets">
-            <input
-              className={inputClass}
-              type="number"
-              min={1}
-              max={8}
-              value={targets}
-              onChange={(e) => setTargets(Number(e.target.value))}
-            />
-          </Field>
           <Field label="Seed">
             <input
               className={inputClass}
@@ -235,7 +221,6 @@ export function ControlPanel() {
                 reset(seed ? Number(seed) : null, {
                   task,
                   terrain,
-                  targets,
                   radius,
                   obstacles,
                 }),
@@ -257,7 +242,7 @@ export function ControlPanel() {
             <Field label="Drone name, shown as name (owner)">
               <input
                 className={inputClass}
-                placeholder="Harvester"
+                placeholder="Builder"
                 maxLength={32}
                 value={droneName}
                 onChange={(e) => setDroneName(e.target.value)}

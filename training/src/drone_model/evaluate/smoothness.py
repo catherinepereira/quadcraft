@@ -2,8 +2,8 @@
 Measures how smoothly a policy turns: per step, the heading and pitch change, how often the turn reverses direction,
 and how sharply the turn rate changes
 
-    python -m drone_model.evaluate.smoothness --policy skill --task hunt_mobs --episodes 3
-    python -m drone_model.evaluate.smoothness --policy goto --task find_block --terrain rough --teacher
+    python -m drone_model.evaluate.smoothness --policy skill --task copy_build --episodes 3
+    python -m drone_model.evaluate.smoothness --policy goto --task dock_station --terrain rough --teacher
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def main() -> None:
     parser.add_argument("--policy", required=True)
     parser.add_argument("--checkpoint", type=Path, default=None)
     parser.add_argument("--teacher", action="store_true", help="measure the policy's teacher alone")
-    parser.add_argument("--task", default="hunt_mobs")
+    parser.add_argument("--task", default="copy_build")
     parser.add_argument("--terrain", choices=["flat", "rough", "cave"], default="flat")
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--obstacles", type=int, default=8)

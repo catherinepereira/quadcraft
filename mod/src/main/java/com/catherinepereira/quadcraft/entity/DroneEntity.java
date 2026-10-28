@@ -39,7 +39,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Moved only by its owner's client, which sends poses to the server.
- * The server never simulates it. It's a living entity so a mob it attacks can fight back, and only mobs hurt it
+ * The server never simulates it. It's a living entity so mobs can hurt it, and only mobs do
  */
 public class DroneEntity extends LivingEntity implements ItemSupplier {
 	private static final EntityDataAccessor<String> OWNER = SynchedEntityData.defineId(DroneEntity.class, EntityDataSerializers.STRING);
@@ -50,9 +50,6 @@ public class DroneEntity extends LivingEntity implements ItemSupplier {
 	private static final EntityDataAccessor<Optional<BlockPos>> HOME = SynchedEntityData.defineId(DroneEntity.class, EntityDataSerializers.OPTIONAL_BLOCK_POS);
 	// jobs waiting to run, a JSON array of job options with a "label", see ClientRuntime.queueJob
 	private static final EntityDataAccessor<String> QUEUE = SynchedEntityData.defineId(DroneEntity.class, EntityDataSerializers.STRING);
-	// the mob the attack beam is locked on, -1 for none, and the drone ticks it has charged, see DroneTools
-	private static final EntityDataAccessor<Integer> BEAM_TARGET = SynchedEntityData.defineId(DroneEntity.class, EntityDataSerializers.INT);
-	private static final EntityDataAccessor<Integer> BEAM_CHARGE = SynchedEntityData.defineId(DroneEntity.class, EntityDataSerializers.INT);
 	// a training arena's drone can't die, damage that would kill it wrecks it instead, which ends its episode
 	private static final EntityDataAccessor<Boolean> WRECKED = SynchedEntityData.defineId(DroneEntity.class, EntityDataSerializers.BOOLEAN);
 	// health a docked drone gets back each tick, empty to full in about 20 seconds
@@ -104,8 +101,6 @@ public class DroneEntity extends LivingEntity implements ItemSupplier {
 		builder.define(CHARGE, 1.0F);
 		builder.define(HOME, Optional.empty());
 		builder.define(QUEUE, "[]");
-		builder.define(BEAM_TARGET, -1);
-		builder.define(BEAM_CHARGE, 0);
 		builder.define(WRECKED, false);
 	}
 
@@ -150,20 +145,6 @@ public class DroneEntity extends LivingEntity implements ItemSupplier {
 
 	public float charge() {
 		return this.entityData.get(CHARGE);
-	}
-
-	/** The entity id the attack beam is locked on, -1 without a beam */
-	public int beamTarget() {
-		return this.entityData.get(BEAM_TARGET);
-	}
-
-	public int beamCharge() {
-		return this.entityData.get(BEAM_CHARGE);
-	}
-
-	public void setBeam(int target, int charge) {
-		this.entityData.set(BEAM_TARGET, target);
-		this.entityData.set(BEAM_CHARGE, charge);
 	}
 
 	/** Out of charge with the battery on, the drone can't fly or use tools */

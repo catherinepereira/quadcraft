@@ -4,9 +4,7 @@ import com.catherinepereira.quadcraft.Json;
 import com.catherinepereira.quadcraft.task.TaskKind;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import net.minecraft.core.BlockPos;
 
 /**
@@ -17,17 +15,9 @@ public final class JobOptions {
 	private JobOptions() {
 	}
 
-	/**
-	 * The schematic for a build job, the blocks for a mine job (a list, or names separated by commas), the crop for a
-	 * harvest job, the rounds for a patrol or guard job
-	 */
+	/** The schematic for a build job, or a studio scene's block or mob */
 	public static String subject(JsonObject options) {
-		if (options.has("blocks") && options.get("blocks").isJsonArray()) {
-			List<String> names = new ArrayList<>();
-			options.getAsJsonArray("blocks").forEach(e -> names.add(e.getAsString()));
-			return String.join(",", names);
-		}
-		for (String key : new String[] {"schematic", "blocks", "block", "crop", "rounds", "subject"}) {
+		for (String key : new String[] {"schematic", "subject"}) {
 			if (options.has(key)) {
 				return options.get(key).getAsString();
 			}
@@ -35,26 +25,13 @@ public final class JobOptions {
 		return "";
 	}
 
-	/** A hunt's or guard's prey: "hostile", "all", or mob kinds as a list or separated by commas, see task.Prey */
-	public static String prey(JsonObject options) {
-		if (!options.has("prey")) {
-			return "";
-		}
-		if (options.get("prey").isJsonArray()) {
-			List<String> names = new ArrayList<>();
-			options.getAsJsonArray("prey").forEach(e -> names.add(e.getAsString()));
-			return String.join(",", names);
-		}
-		return options.get("prey").getAsString();
-	}
-
 	/**
 	 * The job's box corners and paste point as 9 ints, then a gather box's corners as 6 more when it has one.
 	 * Throws IllegalArgumentException saying why the job can't start
 	 */
 	public static int[] region(TaskKind kind, JsonObject options, String subject, Selection selection, Regions regions) {
-		if (kind == TaskKind.RETURN_HOME || kind == TaskKind.FOLLOW_PLAYER) {
-			// the server knows the drone's station, and who it follows
+		if (kind == TaskKind.RETURN_HOME) {
+			// the server knows the drone's station
 			return new int[9];
 		}
 		Selection sel = selection.copy();
@@ -86,37 +63,6 @@ public final class JobOptions {
 		}
 		int[] gather = gather(kind, options.get("gather"), regions);
 
-		if (kind == TaskKind.FLY_TO) {
-			if (sel.dest == null) {
-				throw new IllegalArgumentException("set the point to fly to with the paste point, sneak and right click, or give dest");
-			}
-			return new int[] {0, 0, 0, 0, 0, 0, sel.dest.getX(), sel.dest.getY(), sel.dest.getZ()};
-		}
-		if (kind == TaskKind.SEEK_BLOCK) {
-			if (subject.isEmpty()) {
-				throw new IllegalArgumentException("seek_block needs a block, such as bricks");
-			}
-			if (sel.size() == null) {
-				throw new IllegalArgumentException("select the region to search, or name a saved one");
-			}
-			return Arrays.copyOf(ints(sel.cornerA, sel.cornerB), 9);
-		}
-		if (kind == TaskKind.PATROL_REGION || kind == TaskKind.GUARD_REGION) {
-			if (sel.size() == null) {
-				throw new IllegalArgumentException("select the region to patrol, or name a saved one");
-			}
-			return Arrays.copyOf(ints(sel.cornerA, sel.cornerB), 9);
-		}
-
-		if (kind == TaskKind.MINE_REGION || kind == TaskKind.HARVEST_REGION) {
-			if (subject.isEmpty()) {
-				throw new IllegalArgumentException(kind == TaskKind.MINE_REGION ? "mine_region needs blocks, such as coal_ore, iron_ore" : "harvest_region needs a crop, such as minecraft:wheat");
-			}
-			if (sel.size() == null) {
-				throw new IllegalArgumentException("select the region to mine, or name a saved one");
-			}
-			return Arrays.copyOf(ints(sel.cornerA, sel.cornerB), 9);
-		}
 		if (kind == TaskKind.BUILD_SCHEMATIC) {
 			if (subject.isEmpty()) {
 				throw new IllegalArgumentException("build_schematic needs a schematic file name");
@@ -133,7 +79,7 @@ public final class JobOptions {
 		return concat(sel.region(), gather);
 	}
 
-	/** "mine coal_ore, iron_ore in quarry", what the tablet and the dashboard show for a queued job */
+	/** "copy house to the paste point", what the tablet and the dashboard show for a queued job */
 	public static String label(TaskKind kind, JsonObject options, String subject) {
 		String region = savedName(options, "region", "the selection");
 		String dest = savedName(options, "dest", "the paste point");
@@ -141,34 +87,19 @@ public final class JobOptions {
 		return switch (kind) {
 			case COPY_REGION -> "copy " + region + " to " + dest;
 			case BUILD_SCHEMATIC -> "build " + what + " at " + dest;
-			case MINE_REGION -> "mine " + what + " in " + region;
-			case HARVEST_REGION -> "harvest " + what + " in " + region;
 			case RETURN_HOME -> "return home";
-			case PATROL_REGION -> "patrol " + region + rounds(subject);
-			case GUARD_REGION -> "guard " + region + rounds(subject) + preyLabel(options);
-			case FLY_TO -> "fly to " + dest;
-			case SEEK_BLOCK -> "find " + what + " in " + region;
-			case FOLLOW_PLAYER -> "follow me";
 			default -> kind.id;
 		};
 	}
 
-	// " from cow, zombie", nothing for hostile mobs, the default
-	private static String preyLabel(JsonObject options) {
-		String prey = prey(options);
-		return prey.isBlank() || prey.equals("hostile") ? "" : " from " + prey.replace("minecraft:", "").replace(",", ", ");
-	}
-
-	/** Tool tasks take more steps: flying, mining, and container work */
+	/** Steps an episode gets before it times out */
 	public static int defaultMaxSteps(TaskKind kind) {
 		return switch (kind) {
 			case REPLICATE_BUILD -> 900;
-			case HARVEST_CROPS, PATROL_AREA, FIND_BLOCK, FOLLOW_MOB -> 1500;
 			case GOTO_POINT, DOCK_STATION, STUDIO -> 600;
-			case HUNT_MOBS -> 3000;
-			case COPY_BUILD, SCHEMATIC_BUILD, MINE_DEPOSIT, GATHER_BUILD -> 20000;
+			case COPY_BUILD, SCHEMATIC_BUILD, GATHER_BUILD -> 20000;
 			// a job runs until it's done or stopped, sized for the largest 16x16x16 builds
-			case COPY_REGION, BUILD_SCHEMATIC, MINE_REGION, HARVEST_REGION, RETURN_HOME, PATROL_REGION, GUARD_REGION, FLY_TO, SEEK_BLOCK, FOLLOW_PLAYER -> 100000;
+			case COPY_REGION, BUILD_SCHEMATIC, RETURN_HOME -> 100000;
 		};
 	}
 
@@ -190,11 +121,6 @@ public final class JobOptions {
 			throw new IllegalArgumentException("gather needs a saved region's name or 6 numbers, x0 y0 z0 x1 y1 z1");
 		}
 		return ints(box[0], box[1]);
-	}
-
-	private static String rounds(String subject) {
-		String n = subject.isBlank() ? "1" : subject.trim();
-		return ", " + n + (n.equals("1") ? " round" : " rounds");
 	}
 
 	private static BlockPos[] savedBox(Regions regions, String name) {

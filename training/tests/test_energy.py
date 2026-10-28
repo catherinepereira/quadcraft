@@ -1,6 +1,6 @@
 from drone_model.energy import FULL, BatteryKeeper, EnergyModel, job_volume
 
-JOB = {"kind": "mine", "region": [0, 0, 0, 9, 3, 9], "blocks": ["minecraft:coal_ore"]}
+JOB = {"kind": "copy", "gather": [0, 0, 0, 9, 3, 9]}
 STATION = [20, 0, 0]
 BOUNDS = [-10, -5, -10, 30, 20, 30]
 
@@ -47,7 +47,7 @@ def test_a_full_battery_leaves_the_drone_to_the_planner():
 
 def test_a_job_too_big_for_the_charge_charges_first():
     model = EnergyModel(path=None)
-    model.rates["mine"] = 0.5 / 400
+    model.rates["copy"] = 0.5 / 400
     k, planner = keeper(model)
     assert k(state(0.4)) is not None
     assert k.mode == "home"
@@ -56,14 +56,14 @@ def test_a_job_too_big_for_the_charge_charges_first():
 
 def test_a_job_that_fits_starts_right_away():
     model = EnergyModel(path=None)
-    model.rates["mine"] = 0.1 / 400
+    model.rates["copy"] = 0.1 / 400
     k, _ = keeper(model)
     assert k(state(0.6)) is None
 
 
 def test_mid_job_it_turns_home_only_once_the_reserve_is_at_stake():
     model = EnergyModel(path=None)
-    model.rates["mine"] = 0.01 / 400
+    model.rates["copy"] = 0.01 / 400
     k, _ = keeper(model)
     assert k(state(0.5)) is None
     assert k(state(0.3)) is None
@@ -92,7 +92,7 @@ def test_a_disabled_battery_or_a_station_out_of_bounds_is_ignored():
 
 def test_finish_learns_the_cost_of_the_work_and_the_trip():
     model = EnergyModel(path=None)
-    model.rates["mine"] = 0.01 / 400
+    model.rates["copy"] = 0.01 / 400
     model.learn_rate = 1.0
     k, _ = keeper(model)
     k(state(0.9))
@@ -101,12 +101,12 @@ def test_finish_learns_the_cost_of_the_work_and_the_trip():
     k(state(0.75, pos=(5.0, 4.0, 5.0)))
     k(state(0.7, pos=(15.0, 4.0, 5.0)))
     k.finish(success=True)
-    assert abs(model.rates["mine"] - 0.1 / 400) < 1e-9
+    assert abs(model.rates["copy"] - 0.1 / 400) < 1e-9
     assert abs(model.travel - 0.1 / 10) < 1e-9
 
 
 def test_rates_move_toward_new_measurements():
     model = EnergyModel(path=None)
-    model.learn_job("mine", 100, 0.2)
-    model.learn_job("mine", 100, 0.4)
-    assert 0.002 < model.rates["mine"] < 0.004
+    model.learn_job("copy", 100, 0.2)
+    model.learn_job("copy", 100, 0.4)
+    assert 0.002 < model.rates["copy"] < 0.004

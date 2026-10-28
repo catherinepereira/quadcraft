@@ -1,14 +1,14 @@
 """
-The drone brain: each drone has a perception core (perception.core: the block reader, the voxel memory, the world map,
-and the mob tracker) that it keeps across its jobs. A job's planner reads the core and names the goals, which the
-learned policies fly: the goto policy for getting somewhere and the flights home, the cell skill for everything else.
+The drone brain: each drone has a perception core (perception.core: the block reader, the voxel memory, and the world
+map) that it keeps across its jobs. A job's planner reads the core and names the goals, which the learned policies fly:
+the goto policy for the flights home, the cell skill for the surveys, breaks, and placements of a copy or build.
 It publishes the memory to the dashboard as it changes. A battery keeper flies the drone home to charge when it must,
 see energy.py. Every drone with a job gets its own worker, so the player's drones work at once
 
     python -m drone_model.brain                     run every job started in game or on the dashboard
     python -m drone_model.brain --task replicate_build --episodes 10    evaluate on training arenas
-    python -m drone_model.brain --fleet replicate_build,harvest_crops --episodes 5    several drones, one shared arena
-    python -m drone_model.brain --task hunt_mobs --scripted    the scripted controller flies the goals, for comparison
+    python -m drone_model.brain --fleet replicate_build,dock_station --episodes 5    several drones, one shared arena
+    python -m drone_model.brain --task copy_build --scripted    the scripted controller flies the goals, for comparison
 
 A player's copy job also saves its read of the source box as a .schem in the game's schematics folder, where a build
 job can load it
@@ -24,7 +24,7 @@ from pathlib import Path
 from quadcraft import DroneClient, DroneEnv
 
 from .energy import BatteryKeeper, EnergyModel
-from .framework.evaluate import outcome, prey_killed
+from .framework.evaluate import outcome
 from .paths import CHECKPOINTS, REPORTS, SCHEMATICS
 from .perception.core import DroneCore
 from .perception.reader import FRAME, Reader
@@ -41,15 +41,14 @@ CHARGE_TICKS = 50
 # a drone's worker lets it go after this long without a new job
 IDLE_SECONDS = 20.0
 JOB_TASKS = (
-    "copy_region", "build_schematic", "mine_region", "harvest_region", "return_home", "patrol_region", "guard_region", "fly_to", "seek_block",
-    "follow_player", "replicate_build", "harvest_crops", "copy_build", "schematic_build", "mine_deposit", "gather_build", "patrol_area",
-    "hunt_mobs", "goto_point", "find_block", "follow_mob", "dock_station",
+    "copy_region", "build_schematic", "return_home", "replicate_build", "copy_build", "schematic_build", "gather_build", "goto_point",
+    "dock_station",
 )
 
 
 def job_focus(job: dict) -> list[int] | None:
-    """The smallest box around every box the job names, what the dashboard's memory panel shows, None for a follow"""
-    boxes = [job[k] for k in ("source", "dest", "region") if k in job]
+    """The smallest box around every box the job names, what the dashboard's memory panel shows"""
+    boxes = [job[k] for k in ("source", "dest", "gather") if k in job]
     boxes += [job[k] * 2 for k in ("station", "point") if k in job]
     if not boxes:
         return None
@@ -195,11 +194,10 @@ def evaluate(env: DroneEnv, reader: Reader, args, energy: EnergyModel, task: str
         )
     rate = sum(r["success"] for r in results) / len(results)
     bumps = sum(r["droneCollisions"] or 0 for r in results) / len(results)
-    killed = prey_killed(results) if task in ("hunt_mobs", "guard_region") else None
     tags = f"{'-fleet' if fleet else ''}{'-scripted' if args.scripted else ''}"
     out = REPORTS / "brain" / f"{task}-s{args.size}-{args.terrain}-{args.perception}{tags}-{datetime.now():%Y%m%d-%H%M%S}.json"
-    write_report(out, task=task, terrain=args.terrain, flown_by=flown_by(args), fleet=fleet, success_rate=rate, prey_killed=killed, drone_collisions=bumps, results=results)
-    print(f"{name} flown by {flown_by(args)}: success {rate:.0%}{'' if killed is None else f', {killed:.0%} of prey killed'}, {bumps:.1f} drone collisions an episode, report {out}", flush=True)
+    write_report(out, task=task, terrain=args.terrain, flown_by=flown_by(args), fleet=fleet, success_rate=rate, drone_collisions=bumps, results=results)
+    print(f"{name} flown by {flown_by(args)}: success {rate:.0%}, {bumps:.1f} drone collisions an episode, report {out}", flush=True)
 
 
 def evaluate_fleet(reader: Reader, args, energy: EnergyModel) -> None:

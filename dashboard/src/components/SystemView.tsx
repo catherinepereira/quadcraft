@@ -33,29 +33,28 @@ const LOOP: Stage[] = [
     summary: "Labels every pixel",
     detail: [
       "A segmentation network, a ConvNeXt-Tiny encoder pretrained on ImageNet with a U-Net decoder, that labels each 320x240 frame's pixels as one of 1,303 classes: every block a camera can show and every kind of mob.",
-      "Depth turns each labeled pixel into a 3D point. It trains on staged scenes of each block and mob shot from random angles, blocks rendered offline on the GPU from the game's models and textures and mobs and chest-like blocks captured in the game, then on game frames of wheat fields. It reaches mean IoU 0.396 on held-out game frames, wheat 0.92.",
+      "Depth turns each labeled pixel into a 3D point. It trains on staged scenes of each block and mob shot from random angles, blocks rendered offline on the GPU from the game's models and textures and mobs and chest-like blocks captured in the game, and the shipped checkpoint was also fine-tuned on game frames of wheat fields. It reaches mean IoU 0.396 on held-out game frames.",
     ],
   },
   {
     id: "memory",
     title: "Memory",
-    where: "perception/core.py, memory.py, worldmap.py, mobs.py",
+    where: "perception/core.py, memory.py, worldmap.py",
     kind: "scripted",
-    summary: "Remembers blocks and mobs",
+    summary: "Remembers blocks",
     detail: [
-      "Each drone has one perception core that it keeps across its jobs: the reader, the voxel memory, the world map, and the mob tracker. The memory and map keep which blocks are where, so the drone can act on things it isn't looking at. A block another read outvotes stops counting as a goal. The memory panel on the Live tab shows it.",
-      "The mob tracker groups mob pixels into mobs, keeps each one's identity from frame to frame, and decides its kind by votes. Mob pixels that land in a cell the voxel memory has as solid are the reader misreading that block, and are left out. A remembered mob goes once its spot reads as a block.",
+      "Each drone has one perception core that it keeps across its jobs: the reader, the voxel memory, and the world map. The memory and map keep which blocks are where, so the drone can act on things it isn't looking at. A block another read outvotes stops counting as a goal. The memory panel on the Live tab shows it.",
     ],
   },
   {
     id: "planner",
     title: "Planner",
-    where: "scripted/jobs.py, patrol.py, goto.py",
+    where: "scripted/jobs.py, goto.py",
     kind: "scripted",
     summary: "Decides what to do next",
     detail: [
-      "Hand-written, one per kind of job (the table below). It works out what's surveyed, what's left, and which target to commit to, and names one goal each step: look at a point from a viewpoint, break or place a block, hold the beam on a mob, go to a point, or search.",
-      "It gets only what the drone perceives, never the true arena layout or how many mobs there are.",
+      "Hand-written, one per kind of job (the table below). It works out what's surveyed, what's left, and which target to commit to, and names one goal each step: look at a point from a viewpoint, break or place a block, or go to a point.",
+      "It gets only what the drone perceives, never the true arena layout or the source's blocks.",
     ],
   },
   {
@@ -65,7 +64,7 @@ const LOOP: Stage[] = [
     kind: "learned",
     summary: "Flies the goal",
     detail: [
-      "A learned policy turns the goal plus the camera image and depth into stick input (forward, sideways, up, yaw, pitch) and whether to fire the tool. The cell skill flies the build, mine, harvest, patrol, guard, and hunt goals. The goto policy flies goto, find, and follow goals and the flights home to charge.",
+      "A learned policy turns the goal plus the camera image and depth into stick input (forward, sideways, up, yaw, pitch) and whether to fire the tool. The cell skill flies the view, break, and place goals of copies and builds. The goto policy flies goto goals and the flights home to charge.",
       "The scripted controller is a dev toggle: python -m drone_model.brain --scripted flies the same goals with hand-written steering, for comparison.",
     ],
   },
@@ -90,7 +89,7 @@ const TRAINING: Stage[] = [
     kind: "mod",
     summary: "Seeded practice worlds",
     detail: [
-      "Each seed builds an arena on flat, rough, or cave terrain with obstacles, mobs, structures, or deposits. Hunt arenas pick their prey at random: hostile mobs, every mob, or one kind.",
+      "Each seed builds an arena on flat, rough, or cave terrain with obstacles, a structure to copy or a schematic to build, and for gather arenas a stone deposit holding the materials to dig.",
     ],
   },
   {
@@ -130,7 +129,7 @@ const TRAINING: Stage[] = [
     kind: "learned",
     summary: "Fixed seeds, scored",
     detail: [
-      "Success rate, share of prey killed, turn reversals per 100 steps, and how failed episodes ended, for the policy and for the planner alone.",
+      "Success rate, turn reversals per 100 steps, and how failed episodes ended, for the policy and for the planner alone.",
       "The policy learns from the planner, so it can at best match the planner. A planner fix comes first, then a DAgger round carries it over.",
     ],
   },
@@ -149,14 +148,14 @@ const POLICIES = [
   {
     name: "Cell skill",
     file: "checkpoints/skill.pt",
-    flies: "Build, copy, mine, harvest, patrol, guard, and hunt goals",
+    flies: "View, break, and place goals of copies and builds",
     status:
       "Copies, builds, and gathering 17 of 20, mining and harvest 15 of 15, hunts 10 of 15 (89% of prey killed), patrols 6 of 10",
   },
   {
     name: "Goto policy",
     file: "checkpoints/goto.pt",
-    flies: "Goto, find, and follow goals, and the flights home",
+    flies: "Goto goals and the flights home",
     status:
       "goto_point and dock_station 30 of 30, find_block 14 of 15, follow_mob 3 of 10",
   },
@@ -164,7 +163,8 @@ const POLICIES = [
     name: "Block reader",
     file: "checkpoints/reader.pt",
     flies: "Perception for every job",
-    status: "ConvNeXt-Tiny U-Net at 320x240, 1,303 classes, mean IoU 0.396 on held-out game frames",
+    status:
+      "ConvNeXt-Tiny U-Net at 320x240, 1,303 classes, mean IoU 0.396 on held-out game frames",
   },
 ];
 
@@ -172,23 +172,12 @@ const PLANNERS = [
   [
     "Copy, build",
     "BuildPlanner",
-    "Reads the source with the camera or loads the schematic, clears what doesn't belong, and places the plan bottom up",
+    "Reads the source with the camera or loads the schematic, digs the missing blocks from a materials region, clears what doesn't belong, and places the plan bottom up",
   ],
   [
-    "Mine",
-    "MinePlanner",
-    "Breaks every block of the wanted kinds it sees, and digs trenches to uncover buried ones",
-  ],
-  ["Harvest", "HarvestPlanner", "Breaks ripe crops and plants the bare plots"],
-  [
-    "Patrol, guard, hunt",
-    "PatrolPlanner",
-    "Sweeps 8-block cells and attacks its prey. With none in sight it looks where prey was last seen, and after each sweep it looks over the region from above",
-  ],
-  [
-    "Fly to, seek, follow",
+    "Go to a point",
     "GotoPlanner",
-    "Flies to a point, searches for a block kind, or keeps near a target",
+    "Names the arena's point as a goto goal, for training and evaluating the goto policy",
   ],
   [
     "Return home",
@@ -292,8 +281,8 @@ export function SystemView() {
         <Flow stages={TRAINING} />
         <p className="text-text-muted mt-3 text-sm">
           The block reader trains on its own from studio frames, rendered
-          offline for blocks (collect/render.py) and labeled by the mod for mobs
-          (collect/studio.py, train/reader.py).
+          offline for blocks (collect/render.py) and captured in the game for
+          mobs and chest-like blocks (collect/studio.py, train/reader.py).
         </p>
       </Card>
 

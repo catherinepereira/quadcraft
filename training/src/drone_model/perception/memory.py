@@ -1,7 +1,6 @@
 """
 The drone's working memory: a voxel map of what the block reader has seen.
-Each cell keeps votes for the classes read there and ripe votes, the class with the most votes is what the drone
-believes is there. Every update returns the cells whose belief changed, so the dashboard can show how the memory evolves
+Each cell keeps votes for the classes read there, the class with the most votes is what the drone believes is there. Every update returns the cells whose belief changed, so the dashboard can show how the memory evolves
 """
 
 from __future__ import annotations
@@ -10,7 +9,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .reader import CLASSES, CROPS, INDEX, MOBS, OTHER, SKY, SOLID
+from .reader import CLASSES, INDEX, MOBS, OTHER, SKY, SOLID
 from .worldmap import backproject
 
 AIR = "minecraft:air"
@@ -22,16 +21,14 @@ FAR_WEIGHT = 0.25
 
 
 def base_name(label: str) -> str:
-    """A memory label or block state as a block name: no ripeness, no properties"""
-    return label.split(" ")[0].split("[")[0]
+    """A memory label or block state as a block name, without properties"""
+    return label.split("[")[0]
 
 
 @dataclass
 class Cell:
     # class index to votes, only for the classes read here, a handful of the reader's 1303
     votes: dict[int, float] = field(default_factory=dict)
-    ripe: int = 0
-    unripe: int = 0
     seen: int = -1
 
     def total(self) -> float:
@@ -57,11 +54,6 @@ class Cell:
         best = max(self.votes, key=self.votes.get)
         return AIR if best == SKY else CLASSES[best] if best != OTHER else "<other>"
 
-    @property
-    def is_ripe(self) -> bool | None:
-        n = self.ripe + self.unripe
-        return None if n == 0 else self.ripe > self.unripe
-
 
 @dataclass
 class Change:
@@ -85,19 +77,14 @@ class VoxelMemory:
 
     def label(self, key: tuple[int, int, int]) -> str:
         cell = self.cells.get(key)
-        if cell is None:
-            return AIR
-        name = cell.belief()
-        if name in ("minecraft:wheat", "minecraft:carrots", "minecraft:potatoes", "minecraft:beetroots") and cell.is_ripe is not None:
-            return name + (" ripe" if cell.is_ripe else " growing")
-        return name
+        return AIR if cell is None else cell.belief()
 
     def touch(self, key: tuple[int, int, int]) -> None:
         """Marks a cell whose votes were set outside observe and apply_events, so lookups by block see the change"""
         self.touched.add(key)
 
     def cells_of(self, block: str) -> list[tuple[int, int, int]]:
-        """Every cell the drone believes holds the block kind, whatever its state or ripeness"""
+        """Every cell the drone believes holds the block kind, whatever its state"""
         for key in self.touched:
             old = self.indexed.pop(key, None)
             if old is not None:
@@ -115,18 +102,17 @@ class VoxelMemory:
         cell = self.cells.get(key)
         return cell is not None and cell.belief() in SOLID
 
-    def observe(self, state: dict, depth: np.ndarray, classes: np.ndarray, ripe: np.ndarray | None, depth_max: float = 64.0) -> list[Change]:
-        """Adds one frame of reader output, returns the cells whose belief changed. ripe is None when the frame has no ripeness"""
+    def observe(self, state: dict, depth: np.ndarray, classes: np.ndarray, depth_max: float = 64.0) -> list[Change]:
+        """Adds one frame of reader output, returns the cells whose belief changed"""
         self.step += 1
         # mobs move, they aren't blocks
         view = backproject(state, depth, depth_max, valid=(classes != SKY) & ~np.isin(classes, MOBS))
         cls = classes[np.ix_(view.rows, view.cols)][view.hit]
-        rp = ripe[np.ix_(view.rows, view.cols)][view.hit] if ripe is not None else np.full(len(cls), np.nan)
         dist = depth[np.ix_(view.rows, view.cols)][view.hit]
         keep = view.interior
-        inside, cls, rp = view.inside[keep], cls[keep], rp[keep]
+        inside, cls = view.inside[keep], cls[keep]
         weight = np.clip(NEAR / np.maximum(dist[keep], NEAR), FAR_WEIGHT, 1.0)
-        # a short block (a young crop) can hold both ends of the step, it was hit, not crossed
+        # a short block, such as a slab or a carpet, can hold both ends of the step, it was hit, not crossed
         crossed = view.outside[keep][np.any(view.outside[keep] != inside, axis=1)]
         touched = {tuple(int(v) for v in c) for c in np.unique(inside, axis=0)}
         # rays that crossed a remembered block on the way to something else saw it gone
@@ -138,17 +124,11 @@ class VoxelMemory:
             key = tuple(int(v) for v in key)
             if key in cleared:
                 self.cells[key].add(SKY, int(n))
-        crop_ids = {INDEX[c] for c in CROPS}
-        for (x, y, z), c, r, w in zip(inside, cls.tolist(), rp, weight.tolist()):
+        for (x, y, z), c, w in zip(inside, cls.tolist(), weight.tolist()):
             key = (int(x), int(y), int(z))
             cell = self.cells.setdefault(key, Cell())
             cell.add(c, w)
             cell.seen = self.step
-            if c in crop_ids and not np.isnan(r):
-                if r > 0.5:
-                    cell.ripe += 1
-                else:
-                    cell.unripe += 1
         return [Change(k, before[k], self.label(k), "seen") for k in sorted(touched) if before[k] != self.label(k)]
 
     def apply_events(self, events: list[dict]) -> list[Change]:
@@ -163,7 +143,6 @@ class VoxelMemory:
             before = self.label(key)
             cell = self.cells.setdefault(key, Cell())
             cell.reset()
-            cell.ripe = cell.unripe = 0
             if kind == "place":
                 cell.reset(INDEX.get(event["block"], OTHER), MIN_VOTES)
             changes.append(Change(key, before, self.label(key), "broke" if kind == "break" else "placed"))
@@ -187,5 +166,5 @@ class VoxelMemory:
         s = Schematic.empty(w, h, l)
         for (x, y, z), name in self.box(lo, hi).items():
             if not name.startswith("<"):
-                s.blocks[y - lo[1], z - lo[2], x - lo[0]] = name.split(" ")[0]
+                s.blocks[y - lo[1], z - lo[2], x - lo[0]] = name
         return s

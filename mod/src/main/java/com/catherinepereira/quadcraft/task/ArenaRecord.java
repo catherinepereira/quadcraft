@@ -1,7 +1,6 @@
 package com.catherinepereira.quadcraft.task;
 
 import com.catherinepereira.quadcraft.Json;
-import com.catherinepereira.quadcraft.entity.DroneEntity;
 import com.catherinepereira.quadcraft.entity.DroneTier;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -22,7 +21,6 @@ public final class ArenaRecord {
 	public List<int[]> stalactites = List.of();
 	public String terrain = "flat";
 	public final List<BlockPos> targets = new ArrayList<>();
-	public final List<BlockPos> distractors = new ArrayList<>();
 	public @Nullable Blueprint blueprint;
 	public @Nullable BlockPos referenceBase;
 	public @Nullable BlockPos buildBase;
@@ -47,19 +45,11 @@ public final class ArenaRecord {
 
 	/**
 	 * Task progress counters sent with every tool sync.
-	 * replicate_build, copy_region, build_schematic: destination cells that match, target blocks, destination blocks that don't belong.
-	 * mine_region: blocks of the kind left in the region, how many there were at the start.
-	 * harvest_crops, harvest_region: crops ripe at the start still standing, ripe ones harvested, ripe at the start,
-	 * empty farmland cells, farmland cells.
-	 * patrol_area, hunt_mobs, patrol_region, guard_region: prey left, mobs the drone killed, prey at the start.
-	 * goto_point, find_block, follow_mob, fly_to, seek_block, follow_player: none, the client scores them from the drone's pose
+	 * Builds and copies: destination cells that match, target blocks, destination blocks that don't belong.
+	 * goto_point, dock_station, return_home: none, the client scores them from the drone's pose
 	 */
-	public int[] metrics(ServerLevel level, DroneEntity drone) {
-		return switch (this.kind) {
-			case STUDIO -> new int[0];
-			case REPLICATE_BUILD, COPY_REGION, BUILD_SCHEMATIC, MINE_REGION, HARVEST_CROPS, HARVEST_REGION, COPY_BUILD, SCHEMATIC_BUILD, MINE_DEPOSIT, GATHER_BUILD, RETURN_HOME, PATROL_AREA,
-				HUNT_MOBS, PATROL_REGION, GUARD_REGION, GOTO_POINT, FIND_BLOCK, FOLLOW_MOB, FLY_TO, SEEK_BLOCK, FOLLOW_PLAYER, DOCK_STATION -> this.job.score(level);
-		};
+	public int[] metrics(ServerLevel level) {
+		return this.kind == TaskKind.STUDIO ? new int[0] : this.job.score(level);
 	}
 
 	public JsonObject toJson() {
@@ -73,7 +63,6 @@ public final class ArenaRecord {
 		json.add("stalactites", rows(this.stalactites));
 		if (!this.targets.isEmpty()) {
 			json.add("targets", positions(this.targets));
-			json.add("distractors", positions(this.distractors));
 		}
 		if (this.job != null) {
 			JsonObject job = this.job.toJson();

@@ -1,7 +1,5 @@
 package com.catherinepereira.quadcraft.task;
 
-import net.minecraft.resources.Identifier;
-import java.util.Set;
 import com.catherinepereira.quadcraft.ModContent;
 import com.catherinepereira.quadcraft.entity.DroneEntity;
 import com.catherinepereira.quadcraft.entity.DroneItem;
@@ -16,29 +14,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import java.util.UUID;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
-import net.minecraft.util.Unit;
-import net.minecraft.world.Difficulty;
-import net.minecraft.world.entity.EntitySpawnReason;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.EntityTypes;
-import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.DyeColor;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.CropBlock;
-import net.minecraft.world.level.block.FarmlandBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.AABB;
@@ -61,24 +46,8 @@ public final class TrainingArenas {
 	public static final double CLEARANCE = 2.0;
 	// skip block entity side effects so clearing a filled chest doesn't spill its items
 	static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
-	// a hunt's mobs, hostile and passive, the episode's prey picks which of them the drone hunts and which it leaves alone
-	private static final List<EntityType<? extends Mob>> HOSTILE_MOBS = List.of(EntityTypes.ZOMBIE, EntityTypes.HUSK, EntityTypes.SKELETON, EntityTypes.CREEPER);
-	private static final List<EntityType<? extends Mob>> PASSIVE_MOBS = List.of(EntityTypes.COW, EntityTypes.PIG, EntityTypes.SHEEP, EntityTypes.CHICKEN);
-	private static final int PASSIVE_COUNT = 3;
-	// marks the mobs an arena spawned, the next arena on the spot removes them
+	// marks the mobs a studio scene spawned, the next arena on the spot removes them
 	static final String ARENA_TAG = "quadcraft_arena";
-	// find_block's target and look-alikes, kinds the block reader knows and the arena's terrain never makes
-	private static final List<Block> FIND_BLOCKS = List.of(
-		Blocks.BRICKS, Blocks.WOOL.pick(DyeColor.BLUE), Blocks.WOOL.pick(DyeColor.RED), Blocks.COAL_ORE, Blocks.SANDSTONE, Blocks.TERRACOTTA, Blocks.COBBLESTONE, Blocks.SPRUCE_PLANKS
-	);
-	private static final int FIND_DECOYS = 3;
-	// follow_mob's villagers past the followed one, kept this far from it
-	private static final int FOLLOW_DECOYS = 2;
-	private static final double FOLLOW_DECOY_GAP = 7.0;
-	// a follow of the nearest villager starts the drone at least this much closer to it than to any decoy
-	private static final double NEAREST_MARGIN = 3.0;
-	// a follow at a point names one this far at most from the followed villager
-	private static final int AT_SPREAD = 2;
 	// the share of episodes that start facing away from the task's subject, out of frame
 	private static final double FACE_AWAY = 0.5;
 	private static final float FACE_AWAY_SPREAD = 60.0F;
@@ -199,7 +168,7 @@ public final class TrainingArenas {
 	}
 
 	private static boolean isStructure(TaskKind kind) {
-		return kind == TaskKind.COPY_BUILD || kind == TaskKind.SCHEMATIC_BUILD || kind == TaskKind.MINE_DEPOSIT || kind == TaskKind.GATHER_BUILD;
+		return kind == TaskKind.COPY_BUILD || kind == TaskKind.SCHEMATIC_BUILD || kind == TaskKind.GATHER_BUILD;
 	}
 
 	// the task's sites and the drone's spawn, clear of every key point so far
@@ -214,12 +183,7 @@ public final class TrainingArenas {
 		record.terrain = terrain.kind;
 		record.tier = !req.tier().isEmpty() ? DroneTier.parse(req.tier()) : existing != null ? existing.tier() : DroneTier.COPPER;
 		int start = keyPoints.size();
-		int targets = Math.clamp(req.targets(), 1, 8);
 		List<ItemStack> stock = null;
-		// what the drone has to find, when it isn't the first key point
-		Vec3 subject = null;
-		// spots the drone must start farther from than from subject
-		List<Vec3> farther = List.of();
 
 		switch (kind) {
 			case REPLICATE_BUILD -> {
@@ -230,10 +194,6 @@ public final class TrainingArenas {
 				// the same job input a player's copy job gives, the 3x3 column of air above each base
 				int top = Blueprint.SIZE;
 				record.job = BuildJob.copy(level, record.referenceBase.offset(-1, 1, -1), record.referenceBase.offset(1, top, 1), record.buildBase.offset(-1, 1, -1));
-			}
-			case HARVEST_CROPS -> {
-				BlockPos[] plot = buildFarm(level, rng, record, keyPoints, terrain);
-				record.job = HarvestJob.start(level, plot[0], plot[1], "minecraft:wheat");
 			}
 			case COPY_BUILD, SCHEMATIC_BUILD, GATHER_BUILD -> {
 				int height = Math.max(3, size * 2 / 3);
@@ -269,31 +229,6 @@ public final class TrainingArenas {
 					stock = Structures.stock(rng, target, 27);
 				}
 			}
-			case PATROL_AREA, HUNT_MOBS -> {
-				// the whole floor, its middle first among the key points so pillars leave it clear
-				keyPoints.add(new Vec3(ox + 0.5, terrain.ground(ox, oz) + 1.5, oz + 0.5));
-				List<UUID> quarry = null;
-				Prey prey = Prey.HOSTILE;
-				if (kind == TaskKind.HUNT_MOBS) {
-					wallIn(level, terrain, origin, radius);
-					List<Mob> mobs = spawnMobs(level, rng, record, keyPoints, terrain, Math.clamp(req.targets(), 1, 8));
-					prey = req.prey().isBlank() ? pickPrey(rng, mobs) : Prey.parse(req.prey());
-					// named kinds the arena didn't happen to spawn get one each
-					for (String name : prey.kinds()) {
-						if (mobs.stream().noneMatch(prey::matches)) {
-							EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.parse(name));
-							Mob mob = spawnMob(level, rng, record, keyPoints, terrain, type);
-							if (mob != null) {
-								mobs.add(mob);
-							}
-						}
-					}
-					quarry = mobs.stream().filter(prey::matches).map(Mob::getUUID).toList();
-				}
-				// a hunt's region is everything inside its wall, a mob pressed against the wall is still prey
-				int half = kind == TaskKind.HUNT_MOBS ? radius : radius - 1;
-				record.job = PatrolJob.arena(new BlockPos(ox - half, origin.getY(), oz - half), new BlockPos(ox + half, origin.getY() + HEIGHT - 1, oz + half), prey, quarry);
-			}
 			case GOTO_POINT -> {
 				// a point in the air, given as coordinates, nothing marks it
 				BlockPos cell = randomInside(rng, ox, oz, radius - 1, 0);
@@ -315,80 +250,20 @@ public final class TrainingArenas {
 				record.job = new DockJob(station);
 				keyPoints.add(Vec3.atCenterOf(station.above()));
 			}
-			case FIND_BLOCK -> {
-				// the named block and look-alikes of other kinds on stone pedestals 0 to 2 high
-				List<Block> kinds = new ArrayList<>(FIND_BLOCKS);
-				Collections.shuffle(kinds, rng);
-				for (int i = 0; i <= FIND_DECOYS; i++) {
-					BlockPos base = freeCell(rng, record, keyPoints, terrain, 1, 4.0);
-					int height = rng.nextInt(3);
-					for (int h = 0; h < height; h++) {
-						level.setBlock(base.above(h), Blocks.STONE.defaultBlockState(), FLAGS);
-					}
-					BlockPos top = base.above(height);
-					level.setBlock(top, kinds.get(i).defaultBlockState(), FLAGS);
-					(i == 0 ? record.targets : record.distractors).add(top);
-					keyPoints.add(Vec3.atCenterOf(top));
-				}
-				int half = radius - 1;
-				record.job = GotoJob.block(
-					level, new BlockPos(ox - half, origin.getY(), oz - half), new BlockPos(ox + half, origin.getY() + HEIGHT - 1, oz + half),
-					BuiltInRegistries.BLOCK.getKey(kinds.getFirst()).toString(), new ArrayList<>()
-				);
-			}
-			case FOLLOW_MOB -> {
-				// villagers wandering inside the arena's wall stand in for players
-				// The job names the followed one's kind and either a point near it ("at") or nothing, for the one nearest the drone
-				// ("nearest"), subject picks which, empty for either
-				keyPoints.add(new Vec3(ox + 0.5, terrain.ground(ox, oz) + 1.5, oz + 0.5));
-				wallIn(level, terrain, origin, radius);
-				boolean at = req.subject().isEmpty() ? rng.nextBoolean() : req.subject().equals("at");
-				List<Vec3> villagers = new ArrayList<>();
-				Mob followed = null;
-				for (int i = 0; i <= FOLLOW_DECOYS; i++) {
-					Mob villager = EntityTypes.VILLAGER.create(level, EntitySpawnReason.EVENT);
-					BlockPos cell = freeCell(rng, record, keyPoints, terrain, 1, i == 0 ? 3.0 : FOLLOW_DECOY_GAP);
-					villager.snapTo(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5, rng.nextFloat() * 360.0F, 0.0F);
-					villager.setPersistenceRequired();
-					villager.addTag(ARENA_TAG);
-					level.addFreshEntity(villager);
-					keyPoints.add(Vec3.atCenterOf(cell));
-					villagers.add(Vec3.atCenterOf(cell));
-					followed = followed == null ? villager : followed;
-				}
-				subject = villagers.getFirst();
-				BlockPos point = null;
-				if (at) {
-					BlockPos near = followed.blockPosition().offset(rng.nextInt(2 * AT_SPREAD + 1) - AT_SPREAD, 0, rng.nextInt(2 * AT_SPREAD + 1) - AT_SPREAD);
-					point = new BlockPos(near.getX(), terrain.ground(near.getX(), near.getZ()) + 1, near.getZ());
-				} else {
-					farther = villagers.subList(1, villagers.size());
-				}
-				record.job = GotoJob.follow(followed, GotoJob.FOLLOW_TICKS, point);
-			}
 			case STUDIO -> Studio.build(level, rng, record, keyPoints, terrain, req.subject());
-			case MINE_DEPOSIT -> {
-				int depth = Math.max(3, size / 2 + 1);
-				BlockPos min = site(level, rng, record, keyPoints, terrain, size, size, Blocks.STONE.defaultBlockState(), 0.0).above();
-				int ores = Math.max(3, size * size * depth / 15);
-				Structures.deposit(level, rng, min, min.offset(size - 1, depth - 1, size - 1), Collections.nCopies(ores, Blocks.COAL_ORE));
-				record.job = MineJob.start(level, min, min.offset(size - 1, depth - 1, size - 1), "minecraft:coal_ore", record.tier);
-			}
+			default -> throw new IllegalArgumentException(kind.id + " is a player job, an arena takes training tasks");
 		}
 
 		Vec3 primary = keyPoints.get(start);
-		Vec3 aim = subject != null ? subject : primary;
-		List<Vec3> decoys = farther;
 		Vec3 spawn = null;
 		for (int i = 0; i < 96 && spawn == null; i++) {
 			BlockPos cell = randomInside(rng, ox, oz, radius - 1, 0);
 			int ground = terrain.ground(cell.getX(), cell.getZ());
 			double y = Math.min(ground + 1.5 + rng.nextDouble() * 4.0, terrain.ceiling(cell.getX(), cell.getZ()) - 1.0);
 			Vec3 candidate = new Vec3(cell.getX() + 0.5, y, cell.getZ() + 0.5);
-			boolean farFromPrimary = candidate.distanceTo(primary) >= MIN_SPAWN_DIST && candidate.distanceTo(aim) >= MIN_SPAWN_DIST;
+			boolean farFromPrimary = candidate.distanceTo(primary) >= MIN_SPAWN_DIST;
 			boolean clearOfKeys = keyPoints.stream().allMatch(k -> horizontal(candidate, k) >= KEY_SPAWN_DIST);
-			boolean nearestToAim = decoys.stream().allMatch(d -> horizontal(candidate, d) >= horizontal(candidate, aim) + NEAREST_MARGIN);
-			if (farFromPrimary && clearOfKeys && nearestToAim) {
+			if (farFromPrimary && clearOfKeys) {
 				spawn = candidate;
 			}
 		}
@@ -397,83 +272,12 @@ public final class TrainingArenas {
 		}
 		float yaw = rng.nextFloat() * 360.0F - 180.0F;
 		if (rng.nextDouble() < FACE_AWAY) {
-			// the subject behind the drone, past the edge of its view, which it has to turn and search for
-			float toward = (float) Math.toDegrees(Math.atan2(-(aim.x - spawn.x), aim.z - spawn.z));
+			// the task's first key point behind the drone, past the edge of its view, which it has to turn and look for
+			float toward = (float) Math.toDegrees(Math.atan2(-(primary.x - spawn.x), primary.z - spawn.z));
 			yaw = Mth.wrapDegrees(toward + 180.0F + (rng.nextFloat() * 2.0F - 1.0F) * FACE_AWAY_SPREAD);
 		}
 		keyPoints.add(spawn);
 		return new Member(req, rng, existing, record, spawn, yaw, BlockPos.containing(primary), stock);
-	}
-
-	/** hostiles hostile mobs and PASSIVE_COUNT animals on free cells, see spawnMob */
-	private static List<Mob> spawnMobs(ServerLevel level, Random rng, ArenaRecord record, List<Vec3> keyPoints, Terrain terrain, int hostiles) {
-		if (level.getDifficulty() == Difficulty.PEACEFUL) {
-			throw new IllegalArgumentException("hunt_mobs needs a difficulty above peaceful, where hostile mobs vanish");
-		}
-		List<Mob> mobs = new ArrayList<>();
-		for (int i = 0; i < hostiles + PASSIVE_COUNT; i++) {
-			List<EntityType<? extends Mob>> kinds = i < hostiles ? HOSTILE_MOBS : PASSIVE_MOBS;
-			Mob mob = spawnMob(level, rng, record, keyPoints, terrain, kinds.get(rng.nextInt(kinds.size())));
-			if (mob != null) {
-				mobs.add(mob);
-			}
-		}
-		return mobs;
-	}
-
-	/** Half the hunts go after the hostile mobs, a fifth after every mob, and the rest after one kind the arena spawned */
-	private static Prey pickPrey(Random rng, List<Mob> mobs) {
-		int roll = rng.nextInt(10);
-		if (roll < 5 || mobs.isEmpty()) {
-			return Prey.HOSTILE;
-		}
-		if (roll < 7) {
-			return Prey.ALL;
-		}
-		Mob pick = mobs.get(rng.nextInt(mobs.size()));
-		return Prey.of(Set.of(BuiltInRegistries.ENTITY_TYPE.getKey(pick.getType()).toString()));
-	}
-
-	/**
-	 * One mob of type on a free cell, a key point so pillars don't bury it, or null when the type isn't a mob.
-	 * Skeletons get a bow, and zombies and skeletons an unbreakable cap, the arena's sun would burn them
-	 */
-	private static @Nullable Mob spawnMob(ServerLevel level, Random rng, ArenaRecord record, List<Vec3> keyPoints, Terrain terrain, EntityType<?> type) {
-		if (!(type.create(level, EntitySpawnReason.EVENT) instanceof Mob mob)) {
-			return null;
-		}
-		BlockPos cell = freeCell(rng, record, keyPoints, terrain, 1, 3.0);
-		mob.snapTo(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5, rng.nextFloat() * 360.0F, 0.0F);
-		mob.setPersistenceRequired();
-		mob.addTag(ARENA_TAG);
-		if (mob.getType() == EntityTypes.SKELETON) {
-			mob.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
-		}
-		if (mob.getType() == EntityTypes.ZOMBIE || mob.getType() == EntityTypes.SKELETON) {
-			ItemStack cap = new ItemStack(Items.LEATHER_HELMET);
-			cap.set(DataComponents.UNBREAKABLE, Unit.INSTANCE);
-			mob.setItemSlot(EquipmentSlot.HEAD, cap);
-			mob.setDropChance(EquipmentSlot.HEAD, 0.0F);
-		}
-		level.addFreshEntity(mob);
-		keyPoints.add(Vec3.atCenterOf(cell));
-		return mob;
-	}
-
-	// a two-block gray concrete wall on the arena's border keeps a hunt's mobs in, raised to clear the ground beside it
-	private static void wallIn(ServerLevel level, Terrain terrain, BlockPos origin, int radius) {
-		BlockState wall = Blocks.CONCRETE.pick(DyeColor.GRAY).defaultBlockState();
-		int r = radius + 1;
-		for (int d = -r; d <= r; d++) {
-			for (int[] c : new int[][] {{d, -r}, {d, r}, {-r, d}, {r, d}}) {
-				int x = origin.getX() + c[0];
-				int z = origin.getZ() + c[1];
-				int beside = terrain.ground(Math.clamp(x, origin.getX() - radius, origin.getX() + radius), Math.clamp(z, origin.getZ() - radius, origin.getZ() + radius));
-				for (int y = origin.getY() + 1; y <= Math.max(origin.getY(), beside) + 2; y++) {
-					level.setBlock(new BlockPos(x, y, z), wall, FLAGS);
-				}
-			}
-		}
 	}
 
 	// spawns or moves the drone onto its spawn with a full battery and the task's items, and answers its request
@@ -495,9 +299,6 @@ public final class TrainingArenas {
 		drone.openContainer = null;
 		drone.breakingPos = null;
 		drone.breakProgress = 0;
-		if (kind == TaskKind.HARVEST_CROPS) {
-			drone.inventory.setItem(0, new ItemStack(Items.WHEAT_SEEDS, 4));
-		}
 		List<ItemStack> stock = record.blueprint != null ? record.blueprint.stock(m.rng, drone.inventory.getContainerSize()) : m.stock;
 		if (stock != null) {
 			for (int i = 0; i < stock.size(); i++) {
@@ -512,62 +313,6 @@ public final class TrainingArenas {
 		return new TaskReadyPayload(
 			m.req.requestId(), drone.getId(), m.primary, record.origin, spawn.x, spawn.y, spawn.z, m.yaw, record.toJson().toString(), ""
 		);
-	}
-
-	/**
-	 * A square wheat field, 5 or 7 blocks across, level at the highest ground under it, with a water channel
-	 * down the middle row. Each farmland cell holds ripe wheat, young wheat, or nothing, with at least two ripe and one
-	 * empty. Returns the field's min and max corners at farmland height
-	 */
-	private static BlockPos[] buildFarm(ServerLevel level, Random rng, ArenaRecord record, List<Vec3> keyPoints, Terrain terrain) {
-		int half = 2 + rng.nextInt(2);
-		BlockPos center = null;
-		int baseY = 0;
-		for (int i = 0; i < 200; i++) {
-			BlockPos candidate = randomInside(rng, record.origin.getX(), record.origin.getZ(), record.radius - half - 2, 0);
-			int[] span = groundAndCeiling(terrain, candidate.getX() - half, candidate.getZ() - half, 2 * half + 1, 2 * half + 1);
-			int top = span[0];
-			int roof = span[1];
-			center = candidate;
-			baseY = top;
-			if (roof - top >= 6) {
-				break;
-			}
-		}
-		CropBlock wheat = (CropBlock) Blocks.WHEAT;
-		BlockState farmland = Blocks.FARMLAND.defaultBlockState().setValue(FarmlandBlock.MOISTURE, FarmlandBlock.MAX_MOISTURE);
-		BlockState fill = terrain.isCave() ? Blocks.STONE.defaultBlockState() : Blocks.DIRT.defaultBlockState();
-		List<BlockPos> cells = new ArrayList<>();
-		for (int dx = -half; dx <= half; dx++) {
-			for (int dz = -half; dz <= half; dz++) {
-				int x = center.getX() + dx;
-				int z = center.getZ() + dz;
-				for (int y = terrain.ground(x, z) + 1; y < baseY; y++) {
-					level.setBlock(new BlockPos(x, y, z), fill, FLAGS);
-				}
-				BlockPos ground = new BlockPos(x, baseY, z);
-				if (dx == 0) {
-					level.setBlock(ground, Blocks.WATER.defaultBlockState(), FLAGS);
-				} else {
-					level.setBlock(ground, farmland, FLAGS);
-					cells.add(ground.above());
-				}
-				keyPoints.add(new Vec3(x + 0.5, baseY + 1.5, z + 0.5));
-			}
-		}
-		java.util.Collections.shuffle(cells, rng);
-		for (int i = 0; i < cells.size(); i++) {
-			double roll = rng.nextDouble();
-			// the first two cells are always ripe and the third always empty
-			boolean ripe = i < 2 || (i > 2 && roll < 0.45);
-			boolean empty = i == 2 || (i > 2 && roll > 0.75);
-			if (ripe) {
-				level.setBlock(cells.get(i), wheat.getStateForAge(wheat.getMaxAge()), FLAGS);
-			} else if (!empty) {
-				level.setBlock(cells.get(i), wheat.getStateForAge(rng.nextInt(5)), FLAGS);
-			}
-		}
-		return new BlockPos[] {new BlockPos(center.getX() - half, baseY, center.getZ() - half), new BlockPos(center.getX() + half, baseY, center.getZ() + half)};
 	}
 
 	/**
@@ -819,8 +564,8 @@ public final class TrainingArenas {
 		return Math.hypot(x - nearestX, z - nearestZ) < CLEARANCE;
 	}
 
-	// a two-block pocket under the floor keeps the player out of the drone's view and the arena chunks loaded.
-	// It is walled in stone on every side, water from a farm channel or the terrain below drowned the player
+	// a two-block pocket under the floor keeps the player out of the drone's view and the arena chunks loaded
+	// It is walled in stone on every side, so water in the terrain below can't reach the player
 	private static void parkPlayer(ServerLevel level, ServerPlayer player, int ox, int floorY, int oz) {
 		BlockPos feet = new BlockPos(ox, floorY - 3, oz);
 		BlockState stone = Blocks.STONE.defaultBlockState();

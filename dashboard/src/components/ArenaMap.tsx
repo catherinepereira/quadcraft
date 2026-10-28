@@ -193,9 +193,6 @@ export function ArenaMap({
             </title>
           </circle>
         ))}
-        {arena.distractors?.map((p) =>
-          cell(p, "var(--color-text-dim)", `d${p.join()}`, "stone pedestal"),
-        )}
         {arena.referenceBase && (
           <rect
             x={sx(arena.referenceBase[0] - 1)}

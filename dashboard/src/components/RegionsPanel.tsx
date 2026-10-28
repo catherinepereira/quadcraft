@@ -10,15 +10,17 @@ const PURPOSES: { value: RegionPurpose; label: string; hint: string }[] = [
     hint: "any named box, such as a copy source",
   },
   { value: "safe", label: "Safe", hint: "drones never break or build here" },
-  { value: "mine", label: "Mine", hint: "where mining jobs dig" },
-  { value: "farm", label: "Farm", hint: "where harvest jobs work" },
+  {
+    value: "materials",
+    label: "Materials",
+    hint: "where copies and builds dig their blocks",
+  },
 ];
 
 const TONE = {
   general: "neutral",
   safe: "green",
-  mine: "amber",
-  farm: "accent",
+  materials: "amber",
 } as const;
 
 /** The world's named regions. New ones come from the current selection's source corners */
@@ -71,7 +73,7 @@ export function RegionsPanel() {
           <Field label="Save the selection as">
             <input
               className={inputClass}
-              placeholder="north farm"
+              placeholder="quarry"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />

@@ -26,8 +26,6 @@ export const BLOCK_COLORS: Record<string, string> = {
   "minecraft:chest": "#a2762b",
   "minecraft:farmland": "#5b3c22",
   "minecraft:water": "#3f76e4",
-  "minecraft:wheat ripe": "#d8b44a",
-  "minecraft:wheat growing": "#5f9e2f",
   "minecraft:wheat": "#b6a23a",
   "minecraft:glowstone": "#f2d16b",
   "minecraft:dripstone_block": "#86705c",

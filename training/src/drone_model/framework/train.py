@@ -3,7 +3,7 @@ Trains a policy on its collected data by behavior cloning. Episodes split into t
 validation step comes from a training episode, and the checkpoint with the best validation loss is kept
 
     python -m drone_model.framework.train --policy skill
-    python -m drone_model.framework.train --policy skill --init checkpoints/skill.pt --runs hunt_mobs-flat,hunt_mobs-flat-dagger
+    python -m drone_model.framework.train --policy skill --init checkpoints/skill.pt --runs copy_build-flat-s5-plan-r11,copy_build-flat-s5-dagger-r11
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ class Batches:
 
     def balance(self, files: list[Path], pool: torch.Tensor) -> None:
         """
-        Draws each task's rows in proportion to the square root of its row count, so 6000-step hunts don't crowd
-        600-step builds out of the batches. The task is the run folder's first word
+        Draws each task's rows in proportion to the square root of its row count, so 4000-step copies don't crowd
+        600-step replicas out of the batches. The task is the run folder's first word
         """
         ends = (~self.train[CONTINUES]).long()
         episode = torch.cumsum(ends, 0) - ends

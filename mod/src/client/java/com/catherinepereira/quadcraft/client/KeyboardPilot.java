@@ -5,7 +5,6 @@ import com.catherinepereira.quadcraft.tool.ToolRequest;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Mth;
-import net.minecraft.world.phys.EntityHitResult;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -83,9 +82,7 @@ public final class KeyboardPilot {
 		float forward = (o.keyUp.isDown() ? 1 : 0) - (o.keyDown.isDown() ? 1 : 0);
 		float right = (o.keyRight.isDown() ? 1 : 0) - (o.keyLeft.isDown() ? 1 : 0);
 		float up = (o.keyJump.isDown() ? 1 : 0) - (o.keyShift.isDown() ? 1 : 0);
-		// left click hits a mob under the crosshair and mines a block
-		DroneTool attack = mc.hitResult instanceof EntityHitResult ? DroneTool.ATTACK : DroneTool.BREAK;
-		DroneTool tool = o.keyAttack.isDown() ? attack : place ? DroneTool.PLACE : DroneTool.NONE;
+		DroneTool tool = o.keyAttack.isDown() ? DroneTool.BREAK : place ? DroneTool.PLACE : DroneTool.NONE;
 		return new DroneAction(forward, right, up, yaw, pitch, new ToolRequest(tool, slot, ToolRequest.NO_TRANSFER, 0, -1, 0));
 	}
 }

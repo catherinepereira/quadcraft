@@ -12,11 +12,6 @@ $runs = @(
   @("goto_point", "flat", 30, 600),
   @("goto_point", "rough", 30, 600),
   @("goto_point", "cave", 30, 600),
-  @("find_block", "flat", 15, 1500),
-  @("find_block", "rough", 15, 1500),
-  @("find_block", "cave", 10, 1500),
-  @("follow_mob", "flat", 10, 1500),
-  @("follow_mob", "rough", 10, 1500),
   @("dock_station", "flat", 15, 600),
   @("dock_station", "rough", 15, 600),
   @("dock_station", "cave", 10, 600)

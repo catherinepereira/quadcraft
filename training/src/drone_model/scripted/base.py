@@ -13,21 +13,13 @@ from ..perception.classes import alias
 from ..perception.core import DroneCore
 from .route import waypoint
 
-TOOLS = ("none", "break", "place", "open", "close", "attack")
+TOOLS = ("none", "break", "place", "open", "close")
 REACH = 4.4
-# the attack beam's reach, a little inside the mod's DroneTools.BEAM_RANGE
-BEAM_RANGE = 9.5
 AIM_TOLERANCE = 3.0
 TURN_GAIN = 1.0 / 15.0
-SPIN_TICKS = 24
-SWEEP_TICKS = 12
-SEARCH_SPACING = 6.0
-SEARCH_PITCH = 30.0
 CRUISE_HEIGHT = 2.5
 # keep the drone's feet this far under a known ceiling
 CEILING_GAP = 0.9
-# searching flies higher, it sees over hills and pedestals
-SEARCH_HEIGHT = 3.5
 # where the camera goes for placing: this far out from a side or bottom face's cell, or this high over the cell
 # for a top face, leaning this far toward the drone
 VIA_DIST = 1.3
@@ -86,19 +78,6 @@ def aim_angle(state: dict, point) -> float:
     return math.degrees(math.acos(max(-1.0, min(1.0, cos))))
 
 
-def place_viewpoint(state: dict, cell, d) -> tuple[float, float, float]:
-    """
-    Where the camera goes to place into cell against the support at cell + d: in front of a side or bottom face,
-    and for a top face high over the cell, leaning toward the drone so the camera doesn't look straight down
-    """
-    c = center(cell)
-    if d[1] != -1:
-        return tuple(np.subtract(c, np.asarray(d) * VIA_DIST))
-    lean = np.array([state["pos"][0] - c[0], state["pos"][2] - c[2]])
-    lean = lean / max(np.linalg.norm(lean), 1e-6) * TOP_LEAN
-    return (c[0] + lean[0], c[1] + TOP_VIA_HEIGHT, c[2] + lean[1])
-
-
 def looking_at(hit: dict | None, pos) -> bool:
     """Whether the crosshair, as the camera reads it, rests on the block at pos within reach"""
     return hit is not None and hit["pos"] == tuple(pos) and hit["dist"] <= REACH
@@ -110,8 +89,8 @@ def carried(state: dict, items: set[str] | None = None) -> list[int]:
 
 class Planner:
     """
-    Searching, the scripted controller, and the goal each step for a learned pilot to fly. Every frame goes through the
-    drone's perception core first, subclasses decide the next goal from its memory, map, and mobs
+    The scripted controller, and the goal each step for a learned pilot to fly. Every frame goes through the drone's
+    perception core first, subclasses decide the next goal from its memory and map
     """
 
     def __init__(self, mask_ids: dict, depth_max: float = 64.0, reader=None, core: DroneCore | None = None, schematics=None) -> None:
@@ -122,7 +101,6 @@ class Planner:
         self.core = core if core is not None else DroneCore(mask_ids, depth_max, reader, schematics)
         self.map = self.core.map
         self.memory = self.core.memory
-        self.mobs = self.core.mobs
         self.depth_max = depth_max
         self.reader = self.core.reader
         # what the planner wants this step, {"mode": "view" | "break" | "place", "aim": point, "via": point or None},
@@ -132,10 +110,6 @@ class Planner:
         # scripted controller, and the one that flies home to charge
         self.pilot = None
         self.home_pilot = None
-        self.spin_left = SPIN_TICKS
-        self.home: tuple[float, float] | None = None
-        self.visited: list[tuple[float, float]] = []
-        self.search_goal: tuple[float, float] | None = None
         # blocks the expert gave up on, and how long it has worked on the current one
         self.unreachable: set[tuple] = set()
         self.working_on: tuple | None = None
@@ -154,8 +128,6 @@ class Planner:
         self.intent = None
         self.bounds = state["bounds"]
         self.map.fence = self.bounds
-        if self.home is None:
-            self.home = (state["pos"][0], state["pos"][2])
         self.obs = self.core.see(state, obs)
         pos = state["pos"]
         # told to climb and didn't rise for a few steps, there is a ceiling just over the drone's 0.4-block-tall body
@@ -226,43 +198,6 @@ class Planner:
         # with no ground seen nearby, hold the current altitude
         ground = self.map.ground_near(pos[0], pos[2], default=pos[1] - height)
         return min(ground + height, self.map.headroom(pos[0], pos[2]) - CEILING_GAP)
-
-    def search_points(self) -> list[tuple[float, float]]:
-        """A grid inside the geofence, skipping spots already searched"""
-        box = self.bounds
-        # stay a couple of blocks inside the geofence so a drift doesn't cross it
-        x0, z0, x1, z1 = box[0] + 2, box[2] + 2, box[3] - 2, box[5] - 2
-        nx = max(1, round((x1 - x0) / SEARCH_SPACING))
-        nz = max(1, round((z1 - z0) / SEARCH_SPACING))
-        points = [(x0 + (x1 - x0) * (i + 0.5) / nx, z0 + (z1 - z0) * (j + 0.5) / nz) for i in range(nx) for j in range(nz)]
-        return [p for p in points if all(math.dist(p, v) > SEARCH_SPACING / 2 for v in self.visited) and self.map.free(*p)]
-
-    def explore(self, state: dict) -> dict:
-        """Turn on the spot, then visit unsearched points inside the geofence nearest first, sweeping the view at each"""
-        pos = state["pos"]
-        here = (pos[0], pos[2])
-        cruise = self.cruise_y(state, SEARCH_HEIGHT)
-        up = float(np.clip(cruise - pos[1], -1, 1))
-        pitch = float(np.clip((SEARCH_PITCH - state.get("pitch", 0.0)) * TURN_GAIN, -1, 1))
-        if self.spin_left > 0:
-            self.spin_left -= 1
-            return tool_action([0, 0, up, 1.0, pitch])
-        # a search point that turned out to sit inside a tree or pillar counts as searched
-        if self.search_goal is not None and (math.dist(self.search_goal, here) < 1.5 or (self.search_goal != self.home and not self.map.free(*self.search_goal))):
-            self.visited.append(self.search_goal)
-            self.search_goal = None
-            self.spin_left = SWEEP_TICKS
-            return tool_action([0, 0, up, 1.0, pitch])
-        if self.search_goal is None:
-            points = self.search_points()
-            if not points:
-                # everything searched once, start over, something may have been hidden from every vantage
-                self.visited.clear()
-                points = self.search_points()
-            self.search_goal = min(points, key=lambda p: math.dist(p, here)) if points else self.home
-        goal = self.search_goal
-        move, _ = self.fly(state, (goal[0], cruise, goal[1]), standoff=0.0, look_down=SEARCH_PITCH)
-        return tool_action(move)
 
     def fly(
         self, state: dict, point, standoff: float, hover: float = 0.0, look_down: float | None = None, column=None, back_off: bool = True,
@@ -385,10 +320,6 @@ class Planner:
         # with a viewpoint the drone can be on target before it settles there, in a tight trench it may never settle
         fire = on_target and (arrived or via is not None)
         return tool_action(move, tool if fire else "none", block=place)
-
-    def known(self, block: str) -> list[tuple]:
-        """Cells the memory has as the block kind, less the ones given up on"""
-        return [c for c in self.memory.cells_of(block) if c not in self.unreachable]
 
     def nearest(self, state: dict, cells) -> tuple | None:
         pos = state["pos"]

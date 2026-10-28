@@ -1,6 +1,6 @@
 """
-The drone's perception core: the block reader, the voxel memory of which block fills each cell, the world map of column
-heights and landmarks, and the mob tracker. A drone keeps one core across all its jobs and every frame goes through it.
+The drone's perception core: the block reader, the voxel memory of which block fills each cell, and the world map of
+column heights and landmarks. A drone keeps one core across all its jobs and every frame goes through it.
 A job's planner and the learned skills read from it, they don't keep maps of their own
 """
 
@@ -12,7 +12,6 @@ import numpy as np
 
 from .classes import alias
 from .memory import AIR, Cell, Change, VoxelMemory, base_name
-from .mobs import MobTracker, mob_ids
 from .reader import CLASSES, INDEX, OTHER, SKY, class_lut, mask_lut
 from .worldmap import WorldMap, camera_axes
 
@@ -54,10 +53,6 @@ class DroneCore:
         self.reader = reader
         self.map = WorldMap(mask_ids)
         self.memory = VoxelMemory()
-        # mask id to entity name for every mob kind, and back
-        self.kinds = mob_ids(mask_ids)
-        self.kind_of = {name: i for i, name in self.kinds.items()}
-        self.mobs = MobTracker(self.kinds)
         self.reader_lut = mask_lut(mask_ids) if reader is not None else None
         self.class_lut = class_lut(mask_ids) if reader is None else None
         # the reader's class per pixel for the current frame, and the memory cells that changed with it
@@ -68,28 +63,22 @@ class DroneCore:
 
     def see(self, state: dict, obs: dict) -> dict:
         """
-        Takes one frame into the memory, the map, and the mob tracker, and returns it with the mask planners read: the
-        reader's classes as mask ids, or the mod's own mask
+        Takes one frame into the memory and the map, and returns it with the mask planners read: the reader's classes as
+        mask ids, or the mod's own mask
         """
         if self.reader is not None:
-            classes, ripe = self.reader.read(obs["rgb"], obs["depth"])
-            obs = {**obs, "mask": self.reader_lut[classes], "ripe": ripe}
+            classes, _ = self.reader.read(obs["rgb"], obs["depth"])
+            obs = {**obs, "mask": self.reader_lut[classes]}
         else:
-            # the mod's mask has no ripeness, crops go into the memory without it
-            classes, ripe = self.class_lut[np.minimum(obs["mask"].astype(np.int64), len(self.class_lut) - 1)], None
+            classes = self.class_lut[np.minimum(obs["mask"].astype(np.int64), len(self.class_lut) - 1)]
         self.classes = classes
         self.take_scans(state.get("job") or {})
         events = state.get("events", [])
-        self.changes = self.memory.apply_events(events) + self.memory.observe(state, obs["depth"], classes, ripe, self.depth_max)
+        self.changes = self.memory.apply_events(events) + self.memory.observe(state, obs["depth"], classes, self.depth_max)
         self.map.update(state, obs["depth"], obs["mask"], self.depth_max)
         for event in events:
             if event.get("type") == "break":
                 self.map.forget(tuple(event["pos"]))
-        if "mobs" in state:
-            # a scan hunt, the server hands over the region's mobs
-            self.mobs.scanned([(m["pos"], self.kind_of[m["entity"]]) for m in state["mobs"] if m["entity"] in self.kind_of])
-        else:
-            self.mobs.update(state, obs["depth"], obs["mask"], self.depth_max, solid=self.memory.solid)
         self.obs = obs
         return obs
 

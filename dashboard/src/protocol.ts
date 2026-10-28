@@ -2,14 +2,7 @@
 
 export type Vec3 = [number, number, number];
 
-export const TOOLS = [
-  "none",
-  "break",
-  "place",
-  "open",
-  "close",
-  "attack",
-] as const;
+export const TOOLS = ["none", "break", "place", "open", "close"] as const;
 export type Tool = (typeof TOOLS)[number];
 
 export interface Transfer {
@@ -39,7 +32,6 @@ export interface Arena {
   trees?: [number, number, number][];
   stalactites?: [number, number, number][];
   targets?: Vec3[];
-  distractors?: Vec3[];
   referenceBase?: Vec3;
   buildBase?: Vec3;
   blueprint?: { offset: Vec3; block: string }[];
@@ -79,8 +71,6 @@ export interface EpisodeInfo {
   turnReversals?: number;
   outOfBounds?: boolean;
   metrics?: number[];
-  // patrol cells flown this round and rounds flown, for patrol and guard jobs and arenas
-  patrol?: { visited: number; cells: number; round: number; rounds: number };
 }
 
 export interface Status {
@@ -154,7 +144,7 @@ export interface Memory {
   focus: [number, number, number, number, number, number] | null;
 }
 
-export type RegionPurpose = "general" | "safe" | "mine" | "farm";
+export type RegionPurpose = "general" | "safe" | "materials";
 
 /** A named box saved with the world, box is inclusive min and max corners */
 export interface Region {
@@ -175,7 +165,7 @@ export interface Selection {
 
 /** The drone's instruction for a copy or build job, inclusive min and max corners */
 export interface Job {
-  kind: "copy" | "build" | "mine" | "harvest" | "return_home";
+  kind: "copy" | "build" | "return_home";
   source?: [number, number, number, number, number, number];
   schematic?: string;
   dest: [number, number, number, number, number, number];

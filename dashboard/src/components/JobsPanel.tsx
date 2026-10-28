@@ -4,38 +4,6 @@ import { useBridge } from "../stores/bridge";
 import { Button, Card, Field, inputClass, Pill } from "./ui";
 
 type Point = "cornerA" | "cornerB" | "dest";
-type JobKind = "mine" | "harvest" | "patrol" | "guard" | "seek";
-
-// what each job in the region row takes in its text field, patrols take rounds and may leave it blank for one
-const JOB_FIELD: Record<
-  JobKind,
-  { label: string; placeholder: string; task: string }
-> = {
-  mine: {
-    label: "Blocks",
-    placeholder: "coal_ore, iron_ore",
-    task: "mine_region",
-  },
-  harvest: { label: "Crop", placeholder: "wheat", task: "harvest_region" },
-  patrol: { label: "Rounds", placeholder: "1", task: "patrol_region" },
-  guard: { label: "Rounds", placeholder: "1", task: "guard_region" },
-  seek: { label: "Block", placeholder: "bricks", task: "seek_block" },
-};
-
-function jobOptions(kind: JobKind, text: string): Record<string, string> {
-  const value = text.trim();
-  if (kind === "mine") {
-    // the mod reads a list of names, without a namespace they're minecraft's
-    return { blocks: value };
-  }
-  if (kind === "harvest") {
-    return { crop: value.includes(":") ? value : `minecraft:${value}` };
-  }
-  if (kind === "seek") {
-    return { block: value };
-  }
-  return value ? { rounds: value } : {};
-}
 
 const POINTS: { key: Point; label: string }[] = [
   { key: "cornerA", label: "Source corner 1" },
@@ -91,13 +59,8 @@ export function JobsPanel() {
   const exportSchematic = useBridge((s) => s.exportSchematic);
   const [schematic, setSchematic] = useState("");
   const [exportName, setExportName] = useState("");
-  const [mineRegion, setMineRegion] = useState("");
-  const [mineBlock, setMineBlock] = useState("");
-  const [mineKind, setMineKind] = useState<JobKind>("mine");
   const [destRegion, setDestRegion] = useState("");
   const [gatherRegion, setGatherRegion] = useState("");
-  // a guard's prey, blank for hostile mobs
-  const [prey, setPrey] = useState("");
   const [busy, setBusy] = useState(false);
   const selection = status?.selection;
   const regions = status?.regions ?? [];
@@ -186,95 +149,8 @@ export function JobsPanel() {
         >
           Copy source
         </Button>
-        <Button
-          disabled={!controller || busy || !selection?.dest}
-          onClick={() => start({ task: "fly_to" })}
-          title="Fly to the paste point, around whatever is in the way"
-        >
-          Fly to paste point
-        </Button>
-        <Button
-          disabled={!controller || busy}
-          onClick={() => start({ task: "follow_player" })}
-          title="Keep 2 to 5 blocks from you until stopped"
-        >
-          Follow me
-        </Button>
       </div>
       <div className="mt-4 flex flex-col gap-3">
-        <div className="flex items-end gap-2">
-          <Field label="Job">
-            <select
-              className={inputClass}
-              value={mineKind}
-              onChange={(e) => setMineKind(e.target.value as JobKind)}
-            >
-              <option value="mine">Mine</option>
-              <option value="harvest">Harvest</option>
-              <option value="patrol">Patrol</option>
-              <option value="guard">Guard from mobs</option>
-              <option value="seek">Find a block</option>
-            </select>
-          </Field>
-          <Field label="In">
-            <select
-              className={inputClass}
-              value={mineRegion}
-              onChange={(e) => setMineRegion(e.target.value)}
-            >
-              <option value="">the selection</option>
-              {regions.map((r) => (
-                <option key={r.id} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="flex-1">
-            <Field label={JOB_FIELD[mineKind].label}>
-              <input
-                className={inputClass}
-                placeholder={JOB_FIELD[mineKind].placeholder}
-                value={mineBlock}
-                onChange={(e) => setMineBlock(e.target.value)}
-              />
-            </Field>
-          </div>
-          {mineKind === "guard" && (
-            <div className="flex-1">
-              <Field label="Mobs">
-                <input
-                  className={inputClass}
-                  placeholder="hostile, all, or cow, zombie"
-                  value={prey}
-                  onChange={(e) => setPrey(e.target.value)}
-                />
-              </Field>
-            </div>
-          )}
-          <Button
-            disabled={
-              !controller ||
-              busy ||
-              (!mineBlock.trim() &&
-                mineKind !== "patrol" &&
-                mineKind !== "guard") ||
-              (!mineRegion && !selection?.size)
-            }
-            onClick={() =>
-              start({
-                task: JOB_FIELD[mineKind].task,
-                ...jobOptions(mineKind, mineBlock),
-                ...(mineKind === "guard" && prey.trim()
-                  ? { prey: prey.trim() }
-                  : {}),
-                ...(mineRegion ? { region: mineRegion } : {}),
-              })
-            }
-          >
-            Start
-          </Button>
-        </div>
         <div className="flex items-end gap-2">
           <div className="flex-1">
             <Field label="Build schematic">

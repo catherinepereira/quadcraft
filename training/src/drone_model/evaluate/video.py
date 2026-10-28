@@ -149,7 +149,6 @@ def main() -> None:
     parser.add_argument("--scan", action="store_true", help="scan perception, the server hands the planner each job box read from the world")
     parser.add_argument("--view",choices=["chase", "drone"], default="chase", help="chase films the drone from behind, drone shows its own camera")
     parser.add_argument("--tier", choices=["copper", "iron", "diamond", "netherite"], default=None, help="fly a drone of this tier, it sets how fast blocks break")
-    parser.add_argument("--prey", default=None, help="a hunt's prey: hostile, all, or kinds such as cow,zombie, the arena picks when left out")
     parser.add_argument("--name", default=None)
     parser.add_argument("--out", type=Path, default=VIDEOS)
     args = parser.parse_args()
@@ -164,7 +163,6 @@ def main() -> None:
         chase_size=(CHASE_W, CHASE_H),
         task_options={
             "obstacles": args.obstacles, "terrain": args.terrain, "size": args.size, "perception": "scan" if args.scan else "vision", **({"tier": args.tier} if args.tier else {}),
-            **({"prey": args.prey} if args.prey else {}),
         },
         action_pause_ms=0,
     )

@@ -5,16 +5,15 @@ import com.google.gson.JsonObject;
 import net.minecraft.core.BlockPos;
 
 /**
- * A named box the player designated. safe boxes are never broken or built in by a drone, mine and farm boxes are
- * where those jobs work, general is any other named box, such as a copy source or a build site
+ * A named box the player designated. safe boxes are never broken or built in by a drone, materials boxes are where
+ * copies and builds mine their blocks, general is any other named box, such as a copy source or a build site
  */
 public record Region(String id, String name, Purpose purpose, BlockPos min, BlockPos max) {
 	/** color is the outline's in game and on the web map, as 0xRRGGBB */
 	public enum Purpose {
 		GENERAL(0x8A94A6),
 		SAFE(0x2E9E63),
-		MINE(0xC98A1B),
-		FARM(0x7DBA3A);
+		MATERIALS(0xC98A1B);
 
 		public final int color;
 
@@ -32,7 +31,7 @@ public record Region(String id, String name, Purpose purpose, BlockPos min, Bloc
 					return p;
 				}
 			}
-			throw new IllegalArgumentException("unknown region purpose '" + id + "', expected general, safe, mine, or farm");
+			throw new IllegalArgumentException("unknown region purpose '" + id + "', expected general, safe, or materials");
 		}
 	}
 

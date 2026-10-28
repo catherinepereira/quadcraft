@@ -138,7 +138,7 @@ public final class TabletScreen extends Screen {
 		}
 	}
 
-	// "> Harvester, iron, 82%, home 10 64 -3, mine_region, 2 queued" with the arrow on the active drone
+	// "> Builder, iron, 82%, home 10 64 -3, copy_region, 2 queued" with the arrow on the active drone
 	private String describe(DroneEntity drone, boolean active) {
 		String home = drone.home() == null ? "no station" : "home " + drone.home().toShortString();
 		TaskKind job = this.runtime.jobOf(drone);

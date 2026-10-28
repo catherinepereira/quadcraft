@@ -13,8 +13,7 @@ def remember(p: BuildPlanner, cell, block: str) -> None:
     p.memory.apply_events([{"type": "place", "pos": list(cell), "block": block}])
 
 
-def test_base_name_drops_ripeness_and_properties():
-    assert base_name("minecraft:wheat ripe") == "minecraft:wheat"
+def test_base_name_drops_properties():
     assert base_name("minecraft:oak_stairs[facing=north]") == "minecraft:oak_stairs"
 
 
@@ -62,8 +61,7 @@ def test_trenches_open_a_face_of_every_block():
                 assert outside or any(n in trench for n in neighbors), (x, y, z)
 
 
-def test_scans_fill_memory_and_dig_shafts_to_buried_blocks(tmp_path):
-    from drone_model.scripted.jobs import MinePlanner
+def test_scans_fill_memory_and_dig_shafts_to_buried_materials(tmp_path):
     from quadcraft.schematic import Schematic
 
     s = Schematic.empty(3, 3, 1)
@@ -71,40 +69,16 @@ def test_scans_fill_memory_and_dig_shafts_to_buried_blocks(tmp_path):
     s.blocks[0, 0, 1] = "minecraft:diamond_ore"
     (tmp_path / "scans").mkdir()
     s.save(tmp_path / "scans" / "r.schem")
-    p = MinePlanner(MASK_IDS, reader=object(), schematics=tmp_path)
-    job = {"kind": "mine", "region": [0, 0, 0, 2, 2, 0], "blocks": ["minecraft:diamond_ore"], "scan": {"region": "scans/r.schem"}}
+    p = BuildPlanner(MASK_IDS, reader=object(), schematics=tmp_path)
+    job = {"kind": "copy", "gather": [0, 0, 0, 2, 2, 0], "scan": {"gather": "scans/r.schem"}}
     p.core.take_scans(job)
     p.note_job(job)
-    assert p.scanned_in(job["region"], {"minecraft:diamond_ore"}) == [(1, 0, 0)]
+    assert p.scanned_in(job["gather"], {"minecraft:diamond_ore"}) == [(1, 0, 0)]
     # buried under two layers: the shaft starts at the top of the ore's column
-    assert p.shaft_blocker((1, 0, 0), job["region"]) == (1, 2, 0)
-
-
-def test_scanned_fields_give_ripe_crops_by_age_and_bare_plots(tmp_path):
-    from drone_model.scripted.jobs import HarvestPlanner, block_age
-    from quadcraft.schematic import Schematic
-
-    assert block_age("minecraft:wheat[age=7]") == 7
-    assert block_age("minecraft:farmland[moisture=7]") is None
-    # farmland along x, then a ripe crop, an unripe crop, and air above it
-    s = Schematic.empty(3, 2, 1)
-    s.blocks[0, 0, :] = "minecraft:farmland[moisture=7]"
-    s.blocks[1, 0, 0] = "minecraft:wheat[age=7]"
-    s.blocks[1, 0, 1] = "minecraft:wheat[age=3]"
-    (tmp_path / "scans").mkdir()
-    s.save(tmp_path / "scans" / "f.schem")
-    p = HarvestPlanner(MASK_IDS, reader=object(), schematics=tmp_path)
-    state = {"job": {"kind": "harvest", "region": [0, 0, 0, 2, 1, 0], "crop": "minecraft:wheat", "scan": {"region": "scans/f.schem"}}}
-    p.core.take_scans(state["job"])
-    assert p.ripe_cells(state) == [(0, 1, 0)]
-    assert p.sweep_plots(state) == [(2, 0, 0)]
-    p.broken.add((0, 1, 0))
-    assert p.ripe_cells(state) == []
-    assert p.sweep_plots(state) == [(0, 0, 0), (2, 0, 0)]
+    assert p.shaft_blocker((1, 0, 0), job["gather"]) == (1, 2, 0)
 
 
 def test_a_pocket_under_stone_gets_a_shaft_not_a_dig_through_it(tmp_path):
-    from drone_model.scripted.jobs import MinePlanner
     from quadcraft.schematic import Schematic
 
     # a column of ore, an air pocket, then stone on top, with stone beside it
@@ -114,11 +88,11 @@ def test_a_pocket_under_stone_gets_a_shaft_not_a_dig_through_it(tmp_path):
     s.blocks[1, 0, 0] = "minecraft:air"
     (tmp_path / "scans").mkdir()
     s.save(tmp_path / "scans" / "p.schem")
-    p = MinePlanner(MASK_IDS, reader=object(), schematics=tmp_path)
-    job = {"kind": "mine", "region": [0, 0, 0, 1, 2, 0], "blocks": ["minecraft:coal_ore"], "scan": {"region": "scans/p.schem"}}
+    p = BuildPlanner(MASK_IDS, reader=object(), schematics=tmp_path)
+    job = {"kind": "copy", "gather": [0, 0, 0, 1, 2, 0], "scan": {"gather": "scans/p.schem"}}
     p.core.take_scans(job)
     p.note_job(job)
-    p.dig({"pos": [0.5, 5.0, 0.5], "yaw": 0.0, "pitch": 0.0, "camera": {"eyeHeight": 0.2}}, (0, 0, 0), "minecraft:coal_ore", job["region"])
+    p.dig({"pos": [0.5, 5.0, 0.5], "yaw": 0.0, "pitch": 0.0, "camera": {"eyeHeight": 0.2}}, (0, 0, 0), "minecraft:coal_ore", job["gather"])
     # the drone works the stone capping the pocket first
     assert p.working_on == (0, 2, 0)
 
@@ -134,9 +108,8 @@ def test_aim_angle_is_small_looking_straight_down_at_any_yaw():
 
 
 def test_body_clear_needs_room_for_the_whole_drone(tmp_path):
-    from drone_model.scripted.jobs import MinePlanner
 
-    p = MinePlanner(MASK_IDS, reader=object())
+    p = BuildPlanner(MASK_IDS, reader=object())
     box = [0, 0, 0, 3, 2, 3]
     # air everywhere except one stone at (1, 2, 1), above the box counts as open
     for x in range(4):
@@ -151,7 +124,6 @@ def test_body_clear_needs_room_for_the_whole_drone(tmp_path):
 
 
 def test_a_shaft_through_a_block_the_tier_cant_harvest_is_given_up(tmp_path):
-    from drone_model.scripted.jobs import MinePlanner
     from quadcraft.schematic import Schematic
 
     # coal buried under diamond ore, which a copper drone would break for nothing
@@ -161,20 +133,19 @@ def test_a_shaft_through_a_block_the_tier_cant_harvest_is_given_up(tmp_path):
     s.blocks[2, 0, 0] = "minecraft:diamond_ore"
     (tmp_path / "scans").mkdir()
     s.save(tmp_path / "scans" / "d.schem")
-    p = MinePlanner(MASK_IDS, reader=object(), schematics=tmp_path)
+    p = BuildPlanner(MASK_IDS, reader=object(), schematics=tmp_path)
     job = {
-        "kind": "mine", "region": [0, 0, 0, 1, 2, 0], "blocks": ["minecraft:coal_ore"],
-        "scan": {"region": "scans/d.schem"}, "unharvestable": ["minecraft:diamond_ore"],
+        "kind": "copy", "gather": [0, 0, 0, 1, 2, 0],
+        "scan": {"gather": "scans/d.schem"}, "unharvestable": ["minecraft:diamond_ore"],
     }
     p.core.take_scans(job)
     p.note_job(job)
     assert p.wasted((0, 2, 0)) and not p.wasted((1, 2, 0))
-    p.dig({"pos": [0.5, 5.0, 0.5], "yaw": 0.0, "pitch": 0.0, "camera": {"eyeHeight": 0.2}}, (0, 0, 0), "minecraft:coal_ore", job["region"])
+    p.dig({"pos": [0.5, 5.0, 0.5], "yaw": 0.0, "pitch": 0.0, "camera": {"eyeHeight": 0.2}}, (0, 0, 0), "minecraft:coal_ore", job["gather"])
     assert (0, 0, 0) in p.unreachable
 
 
 def test_trenches_go_around_blocks_the_tier_cant_harvest(tmp_path):
-    from drone_model.scripted.jobs import MinePlanner
     from quadcraft.schematic import Schematic
 
     s = Schematic.empty(3, 1, 1)
@@ -182,8 +153,8 @@ def test_trenches_go_around_blocks_the_tier_cant_harvest(tmp_path):
     s.blocks[0, 0, 1] = "minecraft:obsidian"
     (tmp_path / "scans").mkdir()
     s.save(tmp_path / "scans" / "t.schem")
-    p = MinePlanner(MASK_IDS, reader=object(), schematics=tmp_path)
-    job = {"kind": "mine", "region": [0, 0, 0, 2, 0, 0], "scan": {"region": "scans/t.schem"}, "unharvestable": ["minecraft:obsidian"]}
+    p = BuildPlanner(MASK_IDS, reader=object(), schematics=tmp_path)
+    job = {"kind": "copy", "gather": [0, 0, 0, 2, 0, 0], "scan": {"gather": "scans/t.schem"}, "unharvestable": ["minecraft:obsidian"]}
     p.core.take_scans(job)
     p.note_job(job)
     state = {"pos": [1.5, 3.0, 0.5]}

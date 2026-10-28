@@ -1,6 +1,6 @@
 # mod
 
-Fabric mod for Minecraft Java 26.3 that adds a pilotable quadcopter drone with a 27-slot cargo chest, a mining tool, block placing, and container access. It runs copy, build, mine, and harvest jobs in your own world. A local bridge on port 8318 streams the drone's camera, depth, semantic mask, and a third-person view of the quadcopter, and accepts flight and tool commands, so scripts and models can fly it. Flights can be recorded as datasets.
+Fabric mod for Minecraft Java 26.3 that adds a pilotable quadcopter drone with a 27-slot cargo chest, a mining tool, block placing, and container access. It copies regions and builds schematics in your own world. A local bridge on port 8318 streams the drone's camera, depth, semantic mask, and a third-person view of the quadcopter, and accepts flight and tool commands, so scripts and models can fly it. Flights can be recorded as datasets.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ Create a creative superflat world. The copper, iron, diamond, and netherite dron
 | V | Enter or leave the drone camera |
 | N | Start a new episode of the config's `task` on its `terrain` (builds the arena under you on the first use) |
 | R | Open the drone inventory, and the container in front of the drone with it |
-| Left click while piloting | Hold the beam on the mob under the crosshair, or mine the block |
+| Left click while piloting | Mine the block under the crosshair |
 | B | Arm or stop recording, recording covers every episode that starts while armed |
 | F8 | Toggle the status panel |
 | J | Start a copy job from the tablet's selection |
@@ -45,34 +45,28 @@ Hold the tablet to select. Left click a block for the first corner, right click 
 | --- | --- |
 | Copy a region | Copy from, Paste at, Materials |
 | Build a schematic | Paste at, Materials, and a file from the game's `schematics` folder |
-| Mine blocks in a region | Mine in, and the blocks, such as `coal_ore, iron_ore` |
-| Harvest and replant crops | Farm, and the crop |
-| Patrol a region | Patrol, and the rounds |
-| Guard a region from mobs | Guard, the rounds, and the mobs to kill, hostile ones when blank |
-| Fly to the paste point | Paste at |
-| Find a block in a region | Search, and the block, such as `bricks` |
-| Follow me | none, the drone keeps 2 to 5 blocks from you until stopped |
+| Fly home and charge | none |
 
-Each region is the tablet selection or a saved region. Paste at is the tablet's paste point or a saved region, whose lowest corner the build's lowest corner lands on. Materials is what the drone carries, or a saved region it mines the blocks it needs from before building. That makes a three-region job: mine region A for materials, copy region B, build in region C. The drone never breaks blocks in the copy's source, and the gather region can't overlap the source or the destination.
+Copy from is the tablet selection or a saved region. Paste at is the tablet's paste point or a saved region, whose lowest corner the build's lowest corner lands on. Materials is what the drone carries, or a saved region it digs the blocks it's missing from before building. That makes a three-region job: dig region A for materials, copy region B, build in region C. The drone never breaks blocks in the copy's source, and the gather region can't overlap the source or the destination.
 
 Start job runs a job now. Add to queue puts it on the active drone's queue, with the tablet selection copied in, so moving the selection later doesn't move queued work. Each drone keeps its own queue of up to 16 jobs, saved with the drone. The tablet shows the active drone's queue, where Run queue starts the first job, x removes one, and Clear queue empties it. With the brain connected, the next queued job starts when one finishes. After the last one, or after a job that stops short, the drone flies back to its home station. Send home does the same right away. Run every drone's queue starts the first job of every idle drone, and the drones work at once, each flown by its own brain worker. A job can't share blocks with another drone's running job. The dashboard's Drones panel shows every drone's queue and the job it's on.
 
-To set one up, select a box with the tablet, name it on the job screen's bottom row, pick a purpose, and save it. Repeat for each region, then pick them on the job screen and start. Saved regions show while you hold the tablet, colored by purpose. `safe` boxes are never broken or built in by a drone. `mine` and `farm` are labels for the boxes those jobs work in. Press J to copy the selection straight away. The dashboard's Jobs and Regions panels do the same, and can save the selection as a `.schem` file.
+To set one up, select a box with the tablet, name it on the job screen's bottom row, pick a purpose, and save it. Repeat for each region, then pick them on the job screen and start. Saved regions show while you hold the tablet, colored by purpose. `safe` boxes are never broken or built in by a drone. `materials` marks the boxes meant for digging blocks. Press J to copy the selection straight away. The dashboard's Jobs and Regions panels do the same, and can save the selection as a `.schem` file.
 
-The drone brain in `training` flies the jobs over the bridge, see its README. With `perception` set to `vision` (the default) it reads blocks with its camera, never from the world data. With `scan` the server also writes each of the job's boxes to a schematic for it, read straight from the world, crop ages included. Place actions name the block, and the drone takes it from its inventory, or with `materials` set to `unlimited` in the config, places it without using items.
+The drone brain in `training` flies the jobs over the bridge, see its README. With `perception` set to `vision` (the default) it reads blocks with its camera, never from the world data. With `scan` the server also writes each of the job's boxes to a schematic for it, read straight from the world. Place actions name the block, and the drone takes it from its inventory, or with `materials` set to `unlimited` in the config, places it without using items.
 
 ## The drone
 
-A quadcopter a little under a block across, with spinning rotors, a camera pod that tilts with the camera, and a cargo chest under it. It leans into its motion. A nametag over it shows its name and its owner's, such as `Harvester (Steve)`. The owner renames it by using a named name tag on it, or from the dashboard's Control panel. Any player can use the drone (right click) to open the chest and put items in or take them out, within reach like a chest boat. The owner picks it back up by sneaking and using it with an empty hand, its cargo drops.
+A quadcopter a little under a block across, with spinning rotors, a camera pod that tilts with the camera, and a cargo chest under it. It leans into its motion. A nametag over it shows its name and its owner's, such as `Builder (Steve)`. The owner renames it by using a named name tag on it, or from the dashboard's Control panel. Any player can use the drone (right click) to open the chest and put items in or take them out, within reach like a chest boat. The owner picks it back up by sneaking and using it with an empty hand, its cargo drops.
 
-| Tier | Breaks blocks like | Beam damage | Colors |
-| --- | --- | --- | --- |
-| Copper | a copper pickaxe | 5 | copper arms, orange accents |
-| Iron | an iron pickaxe, faster, and diamond ore drops | 6 | gray arms, white accents |
-| Diamond | a diamond pickaxe, faster, and obsidian drops | 7 | teal arms, cyan accents |
-| Netherite | a netherite pickaxe, fastest, the same drops as diamond. The item survives fire and lava | 8 | dark arms, mauve accents |
+| Tier | Breaks blocks like | Colors |
+| --- | --- | --- |
+| Copper | a copper pickaxe | copper arms, orange accents |
+| Iron | an iron pickaxe, faster, and diamond ore drops | gray arms, white accents |
+| Diamond | a diamond pickaxe, faster, and obsidian drops | teal arms, cyan accents |
+| Netherite | a netherite pickaxe, fastest, the same drops as diamond. The item survives fire and lava | dark arms, mauve accents |
 
-The drone fights with a guardian's beam: held on a mob up to 10 blocks away it locks on, charges from purple to yellow, and hits for the tier's sword damage. On a guard job it only hits the job's prey: hostile mobs, every mob, or the kinds you name, such as cow, zombie. It never hits players or other drones. A mob it hits fights back, and only mobs can hurt a drone. A drone has 20 health and repairs on its home station. Shot down in your world, it drops its cargo and itself. Range sensors report the gap to the nearest block straight ahead and straight below, up to 4 blocks (`sensorRange` in the config).
+Only mobs can hurt a drone, with their hits and their arrows. A drone has 20 health and repairs on its home station. Shot down in your world, it drops its cargo and itself. Range sensors report the gap to the nearest block straight ahead and straight below, up to 4 blocks (`sensorRange` in the config).
 
 A player can own any number of drones. The tablet lists the loaded ones with their tier, charge, home station, and the job each is on, and the one you pick is the active drone that the job screen, piloting, and the HUD use. Placing a drone makes it the active one. Several drones fly at once, each with its own bridge controller, see docs/PROTOCOL.md.
 
@@ -106,27 +100,14 @@ Rows top to bottom, `_` is an empty slot.
 | Task | Goal |
 | --- | --- |
 | replicate_build | copy the small build on the cyan base onto the lime base |
-| harvest_crops | harvest the ripe wheat in a field and replant every plot |
-| patrol_area | fly over every part of the arena |
-| hunt_mobs | kill the arena's prey (its hostile mobs, every mob, or one kind) and leave the rest alone |
 | copy_build | copy a random structure `size` wide onto a lime base |
 | schematic_build | build a random structure from a `.schem` file |
-| mine_deposit | mine every block of one kind from a stone deposit, most of them buried |
-| gather_build | mine materials from a deposit (A), copy a structure (B) without touching it, build the copy (C) |
-| copy_region | copy a selected box to a paste point, in your own world |
-| build_schematic | build a `.schem` file at a paste point, in your own world |
-| mine_region | mine every block of the chosen kinds inside a region, in your own world |
-| harvest_region | harvest and replant a crop in a region, in your own world |
-| patrol_region | fly over every part of a region, round after round, in your own world |
-| guard_region | patrol a region and kill its prey in it, hostile mobs unless you name kinds, in your own world |
+| gather_build | dig materials from a stone deposit (A), copy a structure (B) without touching it, build the copy (C) |
 | goto_point | fly to a point given as coordinates |
-| find_block | find the one block of a named kind among look-alikes and fly to it |
-| follow_mob | stay 2 to 5 blocks from a wandering villager, the one nearest the drone or nearest a given point, among decoys |
 | dock_station | dock on a charging station placed in the arena, the drone's own home stays as it was |
 | studio | nothing to do, one block or mob named by `subject` with random neighbors and backdrop, and camera views of it for block reader frames |
-| fly_to | fly to the paste point, in your own world |
-| seek_block | find a block of a named kind in a region and fly to it, in your own world |
-| follow_player | follow you at 2 to 5 blocks until stopped |
+| copy_region | copy a selected box to a paste point, in your own world |
+| build_schematic | build a `.schem` file at a paste point, in your own world |
 | return_home | fly back to the drone's charging station and dock on it |
 
 Every arena task takes `terrain` (`flat`, `rough` with hills and trees, or `cave` with a roof, walls, and stalactites) and `obstacles` (stone brick pillars), and the structure arenas take `size`. The arena's footprint is a geofence: leaving it ends the episode with a penalty. Rewards and progress counters are in [docs/PROTOCOL.md](../docs/PROTOCOL.md#tasks).
@@ -160,7 +141,7 @@ Depth and mask come from raycasts, so they don't depend on the graphics backend.
 ## Tests
 
 ```powershell
-.\gradlew.bat runClientGameTest                  # launches a client and checks tasks, jobs, tiers, the attack tool, docking and the battery, the job queue, the drone's chest, frames, and recording over the bridge
+.\gradlew.bat runClientGameTest                  # launches a client and checks tasks, jobs, tiers, damage, docking and the battery, the job queue, the drone's chest, frames, and recording over the bridge
 .\gradlew.bat runClientGameTest -Pe2eHold=600    # same, then keeps the world open for the end-to-end tests in training
 powershell -File scripts\regame.ps1      # closes a held game, reruns the gametest with a day-long hold, prints whether it passed
 ```
@@ -179,7 +160,7 @@ src/gametest/   client gametest
 
 - Singleplayer only. The drone pose is client-authoritative and lockstep freezes the integrated server.
 - There is one game camera, so drones flying at once take turns rendering their frames, one frame each. The window shows whichever drone rendered last. Frames are cheap, the depth and mask raycast is most of a capture, so drones flying at once share about 150 captures a second.
-- Drops follow the tier's pickaxe. Gold, diamond, emerald, and redstone ore need an iron drone or better, and obsidian a diamond or netherite one. Mine jobs leave out kinds the drone gets nothing from, the job screen warns about them before you start, and the brain digs around those blocks.
+- Drops follow the tier's pickaxe. Gold, diamond, emerald, and redstone ore need an iron drone or better, and obsidian a diamond or netherite one. The job screen warns before you start a job whose materials region holds blocks the drone gets nothing from, and the brain digs around those blocks.
 - RGB capture reads the main framebuffer, so frames show whatever the game window renders at its current FOV and settings. Keep the window open and unminimized while streaming.
 - Each lockstep step waits for one rendered frame, so step rate follows FPS. Minecraft drops to 10 FPS when the window is unfocused for a while, set Video Settings, Inactivity FPS Limit to Minimized to keep full speed in the background.
 - The marker block can't be broken in survival, drones included.

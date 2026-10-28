@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  */
 final class ResetFlow {
 	private record Pending(
-		int requestId, TaskKind kind, long seed, int radius, int obstacles, int targets, int maxSteps, @Nullable Session session,
+		int requestId, TaskKind kind, long seed, int radius, int obstacles, int maxSteps, @Nullable Session session,
 		@Nullable Integer replyId, @Nullable JsonObject fleet
 	) {
 	}
@@ -66,7 +66,6 @@ final class ResetFlow {
 			return e.getMessage();
 		}
 		int radius = options.has("radius") ? options.get("radius").getAsInt() : config.radius;
-		int targets = options.has("targets") ? options.get("targets").getAsInt() : kind == TaskKind.HUNT_MOBS ? 4 : 1;
 		String terrain = options.has("terrain") ? options.get("terrain").getAsString() : config.terrain;
 		int obstacles = options.has("obstacles") ? options.get("obstacles").getAsInt() : config.obstacles;
 		int size = options.has("size") ? options.get("size").getAsInt() : 5;
@@ -74,7 +73,7 @@ final class ResetFlow {
 		int maxSteps = options.has("maxSteps") ? options.get("maxSteps").getAsInt() : JobOptions.defaultMaxSteps(kind);
 		String tier = options.has("tier") ? options.get("tier").getAsString() : "";
 		JsonObject fleet = options.has("fleet") && options.get("fleet").isJsonObject() ? options.getAsJsonObject("fleet") : null;
-		this.pending = new Pending(++requestSeq, kind, seed, radius, obstacles, targets, maxSteps, session, replyId, fleet);
+		this.pending = new Pending(++requestSeq, kind, seed, radius, obstacles, maxSteps, session, replyId, fleet);
 		this.ready = null;
 		if (this.run == this.runtime.active()) {
 			this.runtime.cancelAutoReset();
@@ -85,8 +84,8 @@ final class ResetFlow {
 		}
 		boolean hasOrigin = config.arenaX != null && config.arenaZ != null;
 		ResetTaskPayload request = new ResetTaskPayload(
-			this.pending.requestId(), kind.id, terrain, seed, radius, obstacles, targets, hasOrigin, hasOrigin ? config.arenaX : 0, hasOrigin ? config.arenaZ : 0,
-			region, subject, size, scan, tier, this.run.droneId(), options.has("prey") ? JobOptions.prey(options) : ""
+			this.pending.requestId(), kind.id, terrain, seed, radius, obstacles, hasOrigin, hasOrigin ? config.arenaX : 0, hasOrigin ? config.arenaZ : 0,
+			region, subject, size, scan, tier, this.run.droneId()
 		);
 		if (fleet != null) {
 			String problem = kind.isJob() ? "a fleet shares a training arena, " + kind.id + " is a player job"
@@ -101,7 +100,7 @@ final class ResetFlow {
 		}
 		this.runtime.log().info(
 			"task.reset_requested",
-			DroneLog.fields("task", kind.id, "terrain", terrain, "seed", seed, "radius", radius, "obstacles", obstacles, "targets", targets, "maxSteps", maxSteps)
+			DroneLog.fields("task", kind.id, "terrain", terrain, "seed", seed, "radius", radius, "obstacles", obstacles, "maxSteps", maxSteps)
 		);
 		return null;
 	}
@@ -209,7 +208,6 @@ final class ResetFlow {
 		JsonObject options = new JsonObject();
 		options.addProperty("radius", pending.radius());
 		options.addProperty("obstacles", pending.obstacles());
-		options.addProperty("targets", pending.targets());
 		options.addProperty("terrain", arena.has("terrain") ? arena.get("terrain").getAsString() : "flat");
 		options.addProperty("maxSteps", pending.maxSteps());
 		meta.add("options", options);

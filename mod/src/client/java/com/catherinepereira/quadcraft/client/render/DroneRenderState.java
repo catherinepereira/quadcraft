@@ -2,8 +2,6 @@ package com.catherinepereira.quadcraft.client.render;
 
 import com.catherinepereira.quadcraft.entity.DroneTier;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.world.phys.Vec3;
-import org.jspecify.annotations.Nullable;
 
 public final class DroneRenderState extends EntityRenderState {
 	public DroneTier tier = DroneTier.COPPER;
@@ -14,9 +12,4 @@ public final class DroneRenderState extends EntityRenderState {
 	public float leanRight;
 	// flashes red while hurt, like a mob
 	public boolean hurt;
-	// the attack beam's end from the camera pod, how far it has charged from 0 to 1, and ticks for its animation
-	public @Nullable Vec3 beam;
-	public float beamScale;
-	public float beamTime;
-	public float eyeHeight;
 }

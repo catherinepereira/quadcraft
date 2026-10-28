@@ -145,8 +145,8 @@ class WorldMap:
             cell = (int(x), int(z))
             self.ceilings[cell] = min(self.ceilings.get(cell, math.inf), float(bottom))
         # a ray that crossed a block on its way to a surface saw it empty, strict kinds lose votes there so a block
-        # that went away (a harvested crop) stops being remembered once the drone looks again
-        # a short block (a young crop) can hold both ends of the step, it was hit, not crossed
+        # that went away (a broken one) stops being remembered once the drone looks again
+        # a short block, such as a slab or a carpet, can hold both ends of the step, it was hit, not crossed
         moved = interior & np.any(outside != inside, axis=1)
         crossed, crossed_n = np.unique(outside[moved], axis=0, return_counts=True)
         for (x, y, z), n in zip(crossed, crossed_n):

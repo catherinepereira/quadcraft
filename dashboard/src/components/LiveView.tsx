@@ -128,21 +128,6 @@ export function LiveView() {
                   : ""}
               </Row>
               <Row label="Turn reversals">{episode.turnReversals ?? 0}</Row>
-              {episode.patrol && (
-                <Row label="Patrol">
-                  {episode.patrol.visited} of {episode.patrol.cells} cells,
-                  round{" "}
-                  {Math.min(episode.patrol.round + 1, episode.patrol.rounds)} of{" "}
-                  {episode.patrol.rounds}
-                </Row>
-              )}
-              {(episode.task === "hunt_mobs" ||
-                episode.task === "guard_region") &&
-                episode.metrics && (
-                  <Row label="Hostile mobs">
-                    {episode.metrics[1]} killed, {episode.metrics[0]} left
-                  </Row>
-                )}
             </>
           ) : (
             <p className="text-text-dim text-sm">

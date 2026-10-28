@@ -17,6 +17,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class BuildJob implements DroneJob {
 	public static final int MAX_SIZE = 16;
+	// a box to mine materials from can be larger than the build
+	public static final int GATHER_MAX_SIDE = 32;
 
 	public final Schematic target;
 	public final BlockPos dest;

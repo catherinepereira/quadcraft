@@ -1,6 +1,6 @@
 # One DAgger round for the cell skill through the framework: job planner episodes flown by the scripted controller, a
 # retrain, then episodes where that skill flies half the goal steps while the planner labels every step, and a final
-# retrain on all the skill data. -Tasks narrows the round to some of the runs, such as hunt_mobs,patrol_area, and
+# retrain on all the skill data. -Tasks narrows the round to some of the runs, such as copy_build,gather_build, and
 # -SkipPlan starts from the first retrain, for a round whose planner episodes are already collected
 # -PlanOnly stops after the first retrain, leaving the DAgger half for a later -SkipPlan run
 param([int]$Round = 1, [string]$Tasks = "", [switch]$SkipPlan, [switch]$PlanOnly)
@@ -14,15 +14,7 @@ $runs = @(
   @("replicate_build", "flat", 3, 20, 900),
   @("copy_build", "flat", 5, 12, 4000),
   @("copy_build", "rough", 5, 12, 4000),
-  @("mine_deposit", "flat", 5, 10, 4000),
-  @("mine_deposit", "rough", 5, 10, 4000),
-  @("gather_build", "flat", 4, 10, 6000),
-  @("harvest_crops", "flat", 5, 12, 1500),
-  @("hunt_mobs", "flat", 5, 20, 6000),
-  @("hunt_mobs", "rough", 5, 15, 6000),
-  @("hunt_mobs", "cave", 5, 10, 6000),
-  @("patrol_area", "flat", 5, 10, 1500),
-  @("patrol_area", "rough", 5, 10, 1500)
+  @("gather_build", "flat", 4, 10, 6000)
 )
 if ($Tasks) {
   $keep = $Tasks.Split(",")

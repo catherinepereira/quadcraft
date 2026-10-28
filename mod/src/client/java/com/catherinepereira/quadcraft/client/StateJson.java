@@ -1,6 +1,5 @@
 package com.catherinepereira.quadcraft.client;
 
-import com.catherinepereira.quadcraft.Json;
 import com.catherinepereira.quadcraft.client.task.TaskScorer;
 import com.catherinepereira.quadcraft.entity.DroneEntity;
 import com.google.gson.JsonArray;
@@ -10,12 +9,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -56,14 +50,6 @@ public final class StateJson {
 		// The rest of the arena layout is never in the state, tools that need it ask the bridge for it
 		JsonObject arena = episode ? task.arena() : null;
 		json.add("job", arena != null && arena.has("job") ? arena.get("job") : JsonNull.INSTANCE);
-		JsonObject job = arena != null && arena.has("job") ? arena.getAsJsonObject("job") : null;
-		// a player carries the drone's tablet, so a followed player is a beacon the drone knows, a followed mob it finds with its camera
-		if (job != null && job.has("target") && mc.level.getEntity(job.get("target").getAsInt()) instanceof Player target) {
-			json.add("followTarget", vec(target.getBoundingBox().getCenter()));
-		}
-		if (job != null && job.has("scan") && job.has("hunt") && job.get("hunt").getAsBoolean()) {
-			json.add("mobs", mobs(mc, Json.readBox(job.getAsJsonArray("region"))));
-		}
 		// the geofence is part of the task, so policies may read it, unlike the arena layout
 		if (episode) {
 			JsonArray box = new JsonArray();
@@ -103,19 +89,6 @@ public final class StateJson {
 			return JsonNull.INSTANCE;
 		}
 		return new JsonPrimitive(Math.max(0.0, hit.getLocation().distanceTo(from) - inset));
-	}
-
-	// scan perception for hunts: every mob in the region with its kind, where the client sees it, the planner picks out its prey
-	private static JsonArray mobs(Minecraft mc, BlockPos[] region) {
-		AABB box = new AABB(Vec3.atLowerCornerOf(region[0]), Vec3.atLowerCornerOf(region[1]).add(1.0, 1.0, 1.0));
-		JsonArray out = new JsonArray();
-		for (Mob mob : mc.level.getEntitiesOfClass(Mob.class, box, Mob::isAlive)) {
-			JsonObject entry = new JsonObject();
-			entry.addProperty("entity", BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).toString());
-			entry.add("pos", vec(mob.getBoundingBox().getCenter()));
-			out.add(entry);
-		}
-		return out;
 	}
 
 	private static JsonArray vec(Vec3 v) {

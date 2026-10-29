@@ -17,9 +17,6 @@ from ..perception.memory import AIR, MIN_VOTES, base_name
 from ..perception.reader import CLASSES, INDEX
 from .base import (
     SURVEY_LIMIT,
-    TOP_LEAN,
-    TOP_VIA_HEIGHT,
-    VIA_DIST,
     Planner,
     center,
     tool_action,
@@ -38,11 +35,15 @@ CARRIED_SHARE = 0.25
 TRENCH_WIDTH = 2
 MAX_STRIKES = 3
 TRENCH_PERIOD = 4
-# the camera this far above a block it breaks from above, or this far out from a side it breaks through
-DIG_HEIGHT = 2.2
-DIG_SIDE = 1.8
-# how far the camera leans off a cell it digs from above, along each horizontal axis
-LEANS = ((0.6, 0.0), (-0.6, 0.0), (0.0, 0.6), (0.0, -0.6))
+# a work pose puts the camera straight out from a face's center, at the first of these distances with room
+WORK_DIST = (2.5, 3.5)
+# a side face with no room level with it is worked from 45 degrees above, still square-on, as (out, up) from the face,
+# the closer ones and then level close in for a face down a two-wide trench
+SIDE_FALLBACKS = ((1.77, 1.77), (1.5, 1.5), (1.5, 0.0))
+# a top face with no room overhead is worked from 45 degrees off one side, the camera this far from the face
+TOP_SLANT = 2.5
+UP = (0, 1, 0)
+SIDES = ((1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1))
 # the drone's half width and height in blocks, its hitbox is 0.6 by 0.4
 DRONE_HALF = 0.3
 DRONE_HEIGHT = 0.4
@@ -98,6 +99,8 @@ class JobPlanner(Planner):
         self.target_cell: tuple[int, int, int] | None = None
         self.target_block: str | None = None
         self.trenches: dict[tuple, list[tuple[int, int, int]]] = {}
+        # the work pose picked for each ("break" or "place", cell), kept so the drone doesn't switch faces on the way
+        self.poses: dict[tuple, tuple] = {}
         self.retries = 0
         # blocks the drone's tier breaks without a drop, the server lists them with the job
         self.unharvestable: frozenset[str] = frozenset()
@@ -176,6 +179,7 @@ class JobPlanner(Planner):
             return False
         self.retries += 1
         self.unreachable.clear()
+        self.bad_faces.clear()
         self.target_cell = None
         self.working_on = None
         return True
@@ -249,35 +253,72 @@ class JobPlanner(Planner):
                     self.unreachable.add(cell)
                     return self.idle()
                 return self.dig(state, blocker, None, box)
-        for d in ((0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)):
-            if not open_side((cell[0] + d[0], cell[1] + d[1], cell[2] + d[2])):
-                continue
-            if d[1] == 1:
-                # from above, leaning a little so the camera isn't straight over the cell, toward whichever side has
-                # room for the drone, nearest to it first. With no room on any side it looks straight down
-                leans = sorted(LEANS, key=lambda d: math.dist((c[0] + d[0], c[2] + d[1]), (state["pos"][0], state["pos"][2])))
-                via = (c[0], c[1] + DIG_HEIGHT, c[2])
-                for dx, dz in leans:
-                    candidate = (c[0] + dx, c[1] + DIG_HEIGHT, c[2] + dz)
-                    if self.body_clear(candidate, box):
-                        via = candidate
-                        break
-            else:
-                # only as far out as the open cells go, a two-wide trench has a wall right behind
-                room = 1 + int(self.empty((cell[0] + 2 * d[0], cell[1], cell[2] + 2 * d[2])))
-                out = min(DIG_SIDE, float(room))
-                via = (c[0] + d[0] * out, c[1] + 0.3, c[2] + d[2] * out)
-            point = (c[0] + d[0] * 0.49, c[1] + d[1] * 0.49, c[2] + d[2] * 0.49)
-            return self.work_on(state, cell, "break", standoff=0.0, hover=0.0, point=point, expect=expect, via=via)
-        return self.work_on(state, cell, "break", standoff=2.5, hover=0.9, expect=expect)
+        # an exposed side first, the one toward the drone, the top only when no side is open
+        normals = [d for d in (*self.toward(state, c, SIDES), UP) if open_side((cell[0] + d[0], cell[1] + d[1], cell[2] + d[2]))]
+        if not normals and box is None:
+            # a face whose neighbor the camera hasn't seen yet may still be open
+            normals = [d for d in (*self.toward(state, c, SIDES), UP) if not self.solid((cell[0] + d[0], cell[1] + d[1], cell[2] + d[2]))]
+        pose = self.work_pose(state, ("break", cell), [(cell, n) for n in normals])
+        if pose is None:
+            self.unreachable.add(cell)
+            return self.idle()
+        _, normal, via, point = pose
+        return self.work_on(state, cell, "break", via, point, normal, expect=expect)
 
-    def body_clear(self, eye, box) -> bool:
-        """Whether the drone fits with its camera at eye: the cells its body spans are empty, or above box where it digs"""
-        cells = {
-            (math.floor(eye[0] + ox), math.floor(eye[1] + oy), math.floor(eye[2] + oz))
+    @staticmethod
+    def toward(state: dict, p, directions) -> list[tuple[int, int, int]]:
+        """directions ordered by how near a step from p along each one ends to the drone, ties in the order given"""
+        pos = state["pos"]
+        return sorted(directions, key=lambda d: round(math.hypot(p[0] + d[0] - pos[0], p[2] + d[2] - pos[2]), 3))
+
+    def work_pose(self, state: dict, key, faces) -> tuple[tuple, tuple, tuple, tuple] | None:
+        """
+        The pose to work one of faces from, each face a (block, normal) pair, as (block, normal, via, point): the camera
+        at via, square-on to the face that normal points out of, aimed at point, the face's center.
+        A side face's spots are straight out from it and level with it, then 45 degrees above it, a top face's straight
+        overhead, then 45 degrees off a side. The first face with a spot that has room and a clear line to the face wins, and stays picked under
+        key while it still has both. None when no face has one
+        """
+        held = self.poses.get(key)
+        if held is not None and (held[0], held[1]) not in self.bad_faces and self.can_work_from(held[0], held[2], held[3]):
+            return held
+        for block, normal in faces:
+            if (block, normal) in self.bad_faces:
+                continue
+            point = tuple(c + n * 0.49 for c, n in zip(center(block), normal))
+            spots = [tuple(p + n * d for p, n in zip(point, normal)) for d in WORK_DIST]
+            if normal[1] == 0:
+                spots += [(point[0] + normal[0] * out, point[1] + up, point[2] + normal[2] * out) for out, up in SIDE_FALLBACKS]
+            if normal == UP:
+                s = TOP_SLANT / math.sqrt(2)
+                spots += [(point[0] + d[0] * s, point[1] + s, point[2] + d[2] * s) for d in self.toward(state, point, SIDES)]
+            for via in spots:
+                if self.can_work_from(block, via, point):
+                    self.poses[key] = (block, normal, via, point)
+                    return self.poses[key]
+        return None
+
+    def can_work_from(self, block, via, point) -> bool:
+        """
+        Whether the drone fits with its camera at via and nothing it knows of stands between via and point.
+        The world map's clearance isn't asked, it keeps the drone out of the trenches it digs
+        """
+        body = {
+            (math.floor(via[0] + ox), math.floor(via[1] + oy), math.floor(via[2] + oz))
             for ox in (-DRONE_HALF, DRONE_HALF) for oz in (-DRONE_HALF, DRONE_HALF) for oy in (-VIA_EYE, DRONE_HEIGHT - VIA_EYE)
         }
-        return all(self.empty(cell) or (box is not None and cell[1] > box[4]) for cell in cells)
+        if any(self.solid(cell) for cell in body):
+            return False
+        steps = max(2, int(math.dist(via, point) / 0.25))
+        for i in range(1, steps):
+            p = [v + (q - v) * i / steps for v, q in zip(via, point)]
+            cell = (math.floor(p[0]), math.floor(p[1]), math.floor(p[2]))
+            if cell != tuple(block) and self.solid(cell):
+                return False
+        return True
+
+    def solid(self, cell) -> bool:
+        return self.believed(cell) != AIR
 
     def close_views(self, cells, box) -> list[tuple[tuple, tuple]]:
         """Up to two close views of each cell, from above or from sides that face open air"""
@@ -507,34 +548,20 @@ class BuildPlanner(JobPlanner):
         for cell in self.unreachable:
             self.strikes[cell] += 1
         self.unreachable = {c for c in self.unreachable if self.strikes[c] >= MAX_STRIKES}
+        self.bad_faces.clear()
 
-    def open_spot(self, p) -> bool:
-        """Room for the camera at p: its block is empty and the planner can fly there"""
-        cell = (math.floor(p[0]), math.floor(p[1]), math.floor(p[2]))
-        return not self.solid(cell) and not self.solid((cell[0], cell[1] - 1, cell[2])) and self.free_at(p)
-
-    def placement(self, state: dict, cell) -> tuple[tuple[int, int, int], str, tuple] | None:
-        """A support for cell, the face to aim at, and a viewpoint with room for the camera"""
-        c = center(cell)
-        for d, face in FACES.items():
+    def placement(self, state: dict, cell) -> tuple[tuple[int, int, int], str, tuple, tuple, tuple] | None:
+        """A support for cell, its face to place against, and the work pose for that face as normal, via, and point"""
+        faces = []
+        for d in FACES:
             n = (cell[0] + d[0], cell[1] + d[1], cell[2] + d[2])
-            if n in self.unreachable or not self.solid(n):
-                continue
-            if face != "up":
-                via = tuple(np.subtract(c, np.asarray(d) * VIA_DIST))
-                if self.open_spot(via):
-                    return n, face, via
-                continue
-            # over a top face, leaning toward the drone first, then the other ways, higher if those are blocked
-            toward = np.array([state["pos"][0] - c[0], state["pos"][2] - c[2]])
-            toward = toward / max(np.linalg.norm(toward), 1e-6)
-            leans = [toward, *(np.array(v, dtype=float) for v in ((1, 0), (-1, 0), (0, 1), (0, -1)))]
-            for height in (TOP_VIA_HEIGHT, TOP_VIA_HEIGHT + 1.5):
-                for lean in leans:
-                    via = (c[0] + lean[0] * TOP_LEAN, c[1] + height, c[2] + lean[1] * TOP_LEAN)
-                    if self.open_spot(via):
-                        return n, face, via
-        return None
+            if n not in self.unreachable and self.solid(n):
+                faces.append((n, (-d[0], -d[1], -d[2])))
+        pose = self.work_pose(state, ("place", cell), faces)
+        if pose is None:
+            return None
+        support, normal, via, point = pose
+        return support, FACES[tuple(-v for v in normal)], normal, via, point
 
     def build(self, state: dict) -> dict:
         lo, hi = self.job_box(state, "dest")
@@ -546,7 +573,7 @@ class BuildPlanner(JobPlanner):
                 continue
             # top down, so nothing is left standing on a block about to go
             self.target = cell
-            return self.work_on(state, cell, "break", standoff=2.5, hover=0.9, expect=name)
+            return self.dig(state, cell, name)
         todo = [c for c in self.plan if not self.done(c) and c not in self.skipped and self.plan[c] not in self.out_of]
         if "gather" in state["job"]:
             action = self.gather(state, todo)
@@ -558,11 +585,9 @@ class BuildPlanner(JobPlanner):
             found = self.placement(state, cell)
             if found is None:
                 continue
-            support, face, via = found
+            support, face, normal, via, point = found
             self.target = cell
-            d = np.subtract(support, cell)
-            point = tuple(np.add(center(support), -d * 0.49))
-            return self.work_on(state, support, "place", standoff=0.0, hover=0.0, point=point, face=face, place=self.plan[cell], via=via)
+            return self.work_on(state, support, "place", via, point, normal, face=face, place=self.plan[cell])
         return self.idle()
 
     def gather(self, state: dict, todo) -> dict | None:

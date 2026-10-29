@@ -137,9 +137,9 @@ def test_a_ground_truth_frame_fills_the_memory_and_leaves_mobs_out():
 
 def test_look_alikes_read_as_the_block_they_copy_and_solidity_comes_from_the_game():
     from drone_model.perception.memory import MIN_VOTES, Cell, VoxelMemory
-    from drone_model.perception.reader import INDEX, OTHER, state_tables
+    from drone_model.perception.reader import INDEX, OTHER, state_table
 
-    classes, _ = state_tables(["minecraft:infested_stone", "minecraft:waxed_copper_block[]", "minecraft:petrified_oak_slab[type=top]", "minecraft:no_such_block"])
+    classes = state_table(["minecraft:infested_stone", "minecraft:waxed_copper_block[]", "minecraft:petrified_oak_slab[type=top]", "minecraft:no_such_block"])
     assert list(classes[1:]) == [INDEX["minecraft:stone"], INDEX["minecraft:copper_block"], INDEX["minecraft:oak_slab"], OTHER]
     memory = VoxelMemory()
     for key, block in (((0, 0, 0), "minecraft:stone"), ((1, 0, 0), "minecraft:poppy"), ((2, 0, 0), "minecraft:oak_slab")):

@@ -1,6 +1,6 @@
 """
 The GPU side: every block texture in one texture array, a color pass drawn at twice the frame size and box-filtered
-down as FrameGrabber does, and a label pass that writes the class, ripeness, and z-depth of each pixel's center, as
+down as FrameGrabber does, and a label pass that writes the class and z-depth of each pixel's center, as
 the mod's Raycaster casts one ray per pixel center
 """
 
@@ -118,14 +118,11 @@ uniform vec3 cam;
 uniform vec3 forward;
 in vec3 in_pos;
 in uint in_cls;
-in uint in_ripe;
 flat out uint cls;
-flat out uint ripe;
 out float zdepth;
 void main() {
     gl_Position = mvp * vec4(in_pos, 1.0);
     cls = in_cls;
-    ripe = in_ripe;
     zdepth = dot(in_pos - cam, forward);
 }
 """
@@ -133,14 +130,11 @@ void main() {
 LABEL_FS = """
 #version 430
 flat in uint cls;
-flat in uint ripe;
 in float zdepth;
 layout(location = 0) out uint out_cls;
-layout(location = 1) out uint out_ripe;
-layout(location = 2) out float out_depth;
+layout(location = 1) out float out_depth;
 void main() {
     out_cls = cls;
-    out_ripe = ripe;
     out_depth = zdepth;
 }
 """
@@ -149,11 +143,9 @@ CLEAR_FS = """
 #version 430
 uniform float depth_max;
 layout(location = 0) out uint out_cls;
-layout(location = 1) out uint out_ripe;
-layout(location = 2) out float out_depth;
+layout(location = 1) out float out_depth;
 void main() {
     out_cls = 0u;
-    out_ripe = 255u;
     out_depth = depth_max;
 }
 """
@@ -209,7 +201,7 @@ class Renderer:
         size = (self.w * SUPERSAMPLE, self.h * SUPERSAMPLE)
         self.color_fbo = ctx.framebuffer([ctx.texture(size, 4)], ctx.depth_renderbuffer(size))
         self.label_fbo = ctx.framebuffer(
-            [ctx.texture((self.w, self.h), 1, dtype="u2"), ctx.texture((self.w, self.h), 1, dtype="u1"), ctx.texture((self.w, self.h), 1, dtype="f4")],
+            [ctx.texture((self.w, self.h), 1, dtype="u2"), ctx.texture((self.w, self.h), 1, dtype="f4")],
             ctx.depth_renderbuffer((self.w, self.h)),
         )
         self.proj = perspective(FOV, self.w / self.h, NEAR, FAR)
@@ -226,13 +218,13 @@ class Renderer:
         fmt = "3f 2f 1f 3f 2f"
         names = ("in_pos", "in_uv", "in_layer", "in_color", "in_light")
         self.opaque_vao = ctx.vertex_array(self.color_prog, [(self.opaque_buf, fmt, *names)]) if self.opaque_buf else None
-        self.label_vao = ctx.vertex_array(self.label_prog, [(self.label_buf, "3f 1u 1u", "in_pos", "in_cls", "in_ripe")])
+        self.label_vao = ctx.vertex_array(self.label_prog, [(self.label_buf, "3f 1u", "in_pos", "in_cls")])
         self.trans_buf = ctx.buffer(reserve=mesh.translucent.nbytes) if len(mesh.translucent) else None
         self.trans_vao = ctx.vertex_array(self.color_prog, [(self.trans_buf, fmt, *names)]) if self.trans_buf else None
         self.scene_vaos = [o for o in (self.opaque_buf, self.label_buf, self.opaque_vao, self.label_vao, self.trans_buf, self.trans_vao) if o is not None]
 
-    def labels(self, eye: np.ndarray, forward: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Class, ripeness, and z-depth per pixel, rows top to bottom"""
+    def labels(self, eye: np.ndarray, forward: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Class and z-depth per pixel, rows top to bottom"""
         mvp = self.proj @ look(eye, forward)
         ctx = self.ctx
         self.label_fbo.use()
@@ -247,9 +239,8 @@ class Renderer:
         self.label_prog["forward"].value = tuple(forward)
         self.label_vao.render(moderngl.TRIANGLES)
         cls = np.frombuffer(self.label_fbo.read(attachment=0, components=1, dtype="u2"), dtype=np.uint16).reshape(self.h, self.w)[::-1]
-        ripe = np.frombuffer(self.label_fbo.read(attachment=1, components=1, dtype="u1"), dtype=np.uint8).reshape(self.h, self.w)[::-1]
-        depth = np.frombuffer(self.label_fbo.read(attachment=2, components=1, dtype="f4"), dtype=np.float32).reshape(self.h, self.w)[::-1]
-        return cls.copy(), ripe.copy(), np.minimum(depth, self.depth_max)
+        depth = np.frombuffer(self.label_fbo.read(attachment=1, components=1, dtype="f4"), dtype=np.float32).reshape(self.h, self.w)[::-1]
+        return cls.copy(), np.minimum(depth, self.depth_max)
 
     def color(self, eye: np.ndarray, forward: np.ndarray, env) -> np.ndarray:
         """The frame as uint8 RGB, rows top to bottom"""

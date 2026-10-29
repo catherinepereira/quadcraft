@@ -23,7 +23,7 @@ import torch
 from torch.nn import functional as F
 
 from ..paths import CHECKPOINTS, DATA
-from ..perception.reader import CLASS_HASH, CLASSES, FRAME, NOT_CROP, BlockReader
+from ..perception.reader import CLASS_HASH, CLASSES, FRAME, BlockReader
 from ..torch_utils import (
     BestCheckpoint,
     Throttle,
@@ -33,7 +33,7 @@ from ..torch_utils import (
     write_report,
 )
 
-FIELDS = ("rgb", "depth", "cls", "ripe")
+FIELDS = ("rgb", "depth", "cls")
 # the pretrained encoder's learning rate as a share of the decoder's, so the first steps don't undo its pretraining
 ENCODER_LR = 0.1
 # the share of each frame's pixels the class loss reads, full-size logits over every class don't fit in memory
@@ -121,16 +121,15 @@ def evaluate(model, episodes, device, rng, throttle: Throttle | None = None) -> 
     n = len(CLASSES)
     inter = torch.zeros(n, dtype=torch.float64, device=device)
     union = torch.zeros(n, dtype=torch.float64, device=device)
-    correct = total = ripe_ok = ripe_n = 0
+    correct = total = 0
     with torch.no_grad():
         for ep in episodes:
             for start in range(0, len(ep["cls"]), EVAL_BATCH):
                 rgb = torch.from_numpy(np.asarray(ep["rgb"][start : start + EVAL_BATCH])).to(device)
                 depth = torch.from_numpy(np.asarray(ep["depth"][start : start + EVAL_BATCH]).astype(np.float32)).to(device)
                 cls = torch.from_numpy(np.asarray(ep["cls"][start : start + EVAL_BATCH]).astype(np.int64)).to(device)
-                ripe = np.asarray(ep["ripe"][start : start + EVAL_BATCH])
                 with autocast(device):
-                    logits, ripe_logits = model(rgb, depth)
+                    logits = model(rgb, depth)
                 pred = logits.argmax(1)
                 hit = pred == cls
                 correct += int(hit.sum())
@@ -138,18 +137,13 @@ def evaluate(model, episodes, device, rng, throttle: Throttle | None = None) -> 
                 both = torch.bincount(cls[hit], minlength=n)
                 inter += both
                 union += torch.bincount(pred.ravel(), minlength=n) + torch.bincount(cls.ravel(), minlength=n) - both
-                crop = ripe != NOT_CROP
-                if crop.any():
-                    ripe_pred = (ripe_logits[:, 0].float().cpu().numpy() > 0)[crop]
-                    ripe_ok += (ripe_pred == (ripe[crop] == 1)).sum()
-                    ripe_n += crop.sum()
                 if throttle is not None:
                     throttle()
     inter, union = inter.cpu().numpy(), union.cpu().numpy()
     present = union > 0
     iou = inter[present] / union[present]
     per_class = {CLASSES[c]: float(inter[c] / union[c]) for c in np.flatnonzero(present)}
-    return {"pixel_acc": float(correct / total), "mean_iou": float(iou.mean()), "ripe_acc": float(ripe_ok / max(ripe_n, 1)), "per_class_iou": per_class}
+    return {"pixel_acc": float(correct / total), "mean_iou": float(iou.mean()), "per_class_iou": per_class}
 
 
 def gpu_peak(device) -> str:
@@ -161,7 +155,7 @@ def init_from(model: BlockReader, checkpoint: Path, device) -> None:
     """Loads an older reader's weights, its class head row by row for the classes both have"""
     saved = torch.load(checkpoint, map_location=device, weights_only=True)
     weights = saved["model"]
-    model.load_state_dict({k: v for k, v in weights.items() if not k.startswith("classes.")}, strict=False)
+    model.load_state_dict({k: v for k, v in weights.items() if not k.startswith(("classes.", "ripe."))}, strict=False)
     with torch.no_grad():
         for i, name in enumerate(saved["classes"]):
             if name in CLASSES:
@@ -195,7 +189,7 @@ def main() -> None:
         reference = BlockReader(pretrained=False).to(device)
         init_from(reference, args.baseline, device)
         baseline = evaluate(reference, val, device, rng)
-        print(f"baseline {args.baseline.name} mean IoU {baseline['mean_iou']:.3f} ripe acc {baseline['ripe_acc']:.3f}", flush=True)
+        print(f"baseline {args.baseline.name} mean IoU {baseline['mean_iou']:.3f}", flush=True)
         del reference
         torch.cuda.empty_cache()
 
@@ -216,14 +210,10 @@ def main() -> None:
         b = {k: v.to(device, non_blocking=True) for k, v in next(loader).items()}
         with autocast(device):
             d = model.features(b["rgb"], b["depth"].float())
-            ripe_logits = model.ripe(d)
             pixels = torch.randint(0, d.shape[2] * d.shape[3], (d.shape[0], int(d.shape[2] * d.shape[3] * LOSS_PIXELS)), device=device)
             picked = d.flatten(2).gather(2, pixels[:, None].expand(-1, d.shape[1], -1))
             logits = model.classes(picked.unsqueeze(-1))[..., 0]
             loss = F.cross_entropy(logits.float(), b["cls"].long().flatten(1).gather(1, pixels), weight=weights)
-            crop = b["ripe"] != NOT_CROP
-            if crop.any():
-                loss = loss + F.binary_cross_entropy_with_logits(ripe_logits[:, 0].float()[crop], (b["ripe"][crop] == 1).float())
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
@@ -237,7 +227,7 @@ def main() -> None:
                 final = metrics
             print(
                 f"step {step} loss {loss.item():.3f} pixel acc {metrics['pixel_acc']:.3f} mean IoU {metrics['mean_iou']:.3f} "
-                f"ripe acc {metrics['ripe_acc']:.3f} {time.perf_counter() - start:.0f}s{gpu_peak(device)}{' saved' if saved else ''}",
+                f"{time.perf_counter() - start:.0f}s{gpu_peak(device)}{' saved' if saved else ''}",
                 flush=True,
             )
     write_report(args.out.with_suffix(".json"), args, best=final, history=history, baseline=baseline)

@@ -2,7 +2,7 @@
 Block reader training frames from studio scenes: for every block and mob the reader learns, scenes of it with random
 neighbors, backdrop, light, and time of day, each captured from the views the mod picks (task/Studio.java).
 Every frame is labeled from the state and mask streams and written straight into shards of training arrays,
-data/studio/<shard>/{rgb,depth,cls,ripe}.npy, with meta.json naming the class list and each frame's subject.
+data/studio/<shard>/{rgb,depth,cls}.npy, with meta.json naming the class list and each frame's subject.
 The plan is fixed by the seed, so a stopped run picks up at the first unfinished shard
 
 Blocks the offline renderer draws (collect.render) get only a few scenes here, enough for validation frames from the game
@@ -28,11 +28,11 @@ from ..perception.reader import (
     INDEX,
     MOB_KINDS,
     entity_table,
-    state_tables,
+    state_table,
 )
 
 SHARD = 512
-FIELDS = ("rgb", "depth", "cls", "ripe")
+FIELDS = ("rgb", "depth", "cls")
 # a frame where the subject covers fewer pixels than this went to its neighbors, it's dropped
 MIN_SUBJECT_PIXELS = 12
 TERRAINS = ("flat", "rough", "cave")
@@ -56,14 +56,14 @@ def plan(block_scenes: int, rendered_block_scenes: int, mob_scenes: int, seed: i
     return scenes
 
 
-def label(obs, classes: np.ndarray, ripe: np.ndarray, entities: np.ndarray, entity_base: int) -> tuple[np.ndarray, np.ndarray]:
-    """Reader classes and ripeness per pixel, blocks from the state stream and mobs from the mask's entity ids"""
+def label(obs, classes: np.ndarray, entities: np.ndarray, entity_base: int) -> np.ndarray:
+    """Reader classes per pixel, blocks from the state stream and mobs from the mask's entity ids"""
     ids = obs.block_states
     cls = classes[np.minimum(ids, len(classes) - 1)]
     mask = obs.mask.astype(np.int64)
     mob = (mask >= entity_base) & (mask - entity_base < len(entities))
     cls[mob] = entities[mask[mob] - entity_base]
-    return cls, ripe[np.minimum(ids, len(ripe) - 1)]
+    return cls
 
 
 def main() -> None:
@@ -80,7 +80,7 @@ def main() -> None:
     print(f"{len(scenes)} scenes in {n_shards} shards", flush=True)
     env = DroneEnv(task="studio", tools=False, streams=("rgb", "depth", "mask", "state"), action_pause_ms=0, width=FRAME[1], height=FRAME[0])
     client = env.client
-    classes, ripe = state_tables(client.state_names)
+    classes = state_table(client.state_names)
     entities = entity_table(client.mask_ids["entities"])
     base = client.mask_ids["entityBase"]
     failed = []
@@ -99,13 +99,12 @@ def main() -> None:
                     continue
                 for pose in (client.arena() or {}).get("views", []):
                     frame = client.view(pose)
-                    cls, rp = label(frame, classes, ripe, entities, base)
+                    cls = label(frame, classes, entities, base)
                     if (cls == INDEX[subject]).sum() < MIN_SUBJECT_PIXELS:
                         continue
                     parts["rgb"].append(frame.rgb)
                     parts["depth"].append(frame.depth.astype(np.float16))
                     parts["cls"].append(cls)
-                    parts["ripe"].append(rp)
                     subjects.append(subject)
             shard.mkdir(parents=True, exist_ok=True)
             for f, v in parts.items():

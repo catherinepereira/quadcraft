@@ -303,11 +303,6 @@ class Assets:
         baked = [self.bake(a["model"], int(a.get("x", 0)), int(a.get("y", 0)), bool(a.get("uvlock", False))) for a in applies]
         return [b for b in baked if b is not None]
 
-    def max_age(self, block: str) -> int:
-        k = self.kind(block)
-        ages = [int(parse_props(key).get("age", 0)) for key in (k.variants or {})] if k else []
-        return max(ages, default=0)
-
     def tints(self, block: str, props: dict[str, str], biome: Biome) -> list[np.ndarray]:
         """The RGB tint of each tint layer, white for an untinted layer"""
         name = split(block)[1]

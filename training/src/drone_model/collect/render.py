@@ -53,7 +53,7 @@ class Studio:
         self.stager = Stager(self.assets, self.renderer.textures, self.blocks)
 
     def scene(self, subject: str, seed: int, terrain: str, views: int):
-        """Up to views frames of one scene as (rgb, depth, cls, ripe) each"""
+        """Up to views frames of one scene as (rgb, depth, cls) each"""
         from ..render.mesh import build, far_ground
 
         scene = self.stager.stage(subject, seed, terrain)
@@ -72,11 +72,11 @@ class Studio:
         target = INDEX[subject]
         out = []
         for view in self.stager.views(scene, rng):
-            cls, ripe, depth = self.renderer.labels(view.eye, view.forward)
+            cls, depth = self.renderer.labels(view.eye, view.forward)
             if (cls == target).sum() < MIN_SUBJECT_PIXELS:
                 continue
             rgb = self.renderer.color(view.eye, view.forward, scene.env)
-            out.append((rgb, depth.astype(np.float16), cls, ripe))
+            out.append((rgb, depth.astype(np.float16), cls))
             if len(out) == views:
                 break
         return out
@@ -106,8 +106,8 @@ def worker(rank: int, workers: int, scenes: list, n_shards: int, out: Path, view
             except ValueError:
                 failed += 1
                 continue
-            for rgb, depth, cls, ripe in frames:
-                for f, v in zip(FIELDS, (rgb, depth, cls, ripe)):
+            for frame in frames:
+                for f, v in zip(FIELDS, frame):
                     parts[f].append(v)
                 subjects.append(subject)
         write_shard(shard, parts, subjects)

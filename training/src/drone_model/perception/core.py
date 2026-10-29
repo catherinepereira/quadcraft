@@ -67,7 +67,7 @@ class DroneCore:
         mask ids, or the mod's own mask
         """
         if self.reader is not None:
-            classes, _ = self.reader.read(obs["rgb"], obs["depth"])
+            classes = self.reader.read(obs["rgb"], obs["depth"])
             obs = {**obs, "mask": self.reader_lut[classes]}
         else:
             classes = self.class_lut[np.minimum(obs["mask"].astype(np.int64), len(self.class_lut) - 1)]

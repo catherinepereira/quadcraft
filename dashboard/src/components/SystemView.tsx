@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, Pill } from "./ui";
 
 // keep in step with docs/TRAINING.md, training/src/drone_model (brain.py, scripted/, policies/), and training/RESULTS.md
-const AS_OF = "2026-10-25";
+const AS_OF = "2026-10-28";
 
 interface Stage {
   id: string;
@@ -53,7 +53,7 @@ const LOOP: Stage[] = [
     kind: "scripted",
     summary: "Decides what to do next",
     detail: [
-      "Hand-written, one per kind of job (the table below). It works out what's surveyed, what's left, and which target to commit to, and names one goal each step: look at a point from a viewpoint, break or place a block, or go to a point.",
+      "Hand-written, one per kind of job (the table below). It works out what's surveyed, what's left, and which target to commit to, and names one goal each step: look at a point from a viewpoint, break or place a block, or go to a point. Every break and place is worked from a fixed pose square-on to one face of the block, 2.5 blocks straight out and level for a side face and 2.5 overhead for a top face.",
       "It gets only what the drone perceives, never the true arena layout or the source's blocks.",
     ],
   },
@@ -150,14 +150,14 @@ const POLICIES = [
     file: "checkpoints/skill.pt",
     flies: "View, break, and place goals of copies and builds",
     status:
-      "Copies, builds, and gathering 17 of 20, mining and harvest 15 of 15, hunts 10 of 15 (89% of prey killed), patrols 6 of 10",
+      "One DAgger round on the square-on work pose: replicate 4 of 5, copy flat 3 of 5, copy rough 0 of 5. Trails the planner, more rounds next",
   },
   {
     name: "Goto policy",
     file: "checkpoints/goto.pt",
     flies: "Goto goals and the flights home",
     status:
-      "goto_point and dock_station 30 of 30, find_block 14 of 15, follow_mob 3 of 10",
+      "Retrained on the goto_point and dock_station data, not evaluated since",
   },
   {
     name: "Block reader",

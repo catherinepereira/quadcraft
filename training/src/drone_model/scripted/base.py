@@ -20,15 +20,16 @@ TURN_GAIN = 1.0 / 15.0
 CRUISE_HEIGHT = 2.5
 # keep the drone's feet this far under a known ceiling
 CEILING_GAP = 0.9
-# where the camera goes for placing: this far out from a side or bottom face's cell, or this high over the cell
-# for a top face, leaning this far toward the drone
-VIA_DIST = 1.3
-TOP_VIA_HEIGHT = 2.0
-TOP_LEAN = 0.8
 # within this many blocks of a viewpoint the drone strafes to it with the camera on the aim point
 VIEW_APPROACH = 1.5
-# steps spent on one block before giving up on it, mining ore takes about 25
+# a tool fires only with the camera this close to its work pose
+SETTLE = 0.3
+# steps spent working one face of a block before trying another, mining ore takes about 25
 WORK_LIMIT = 150
+# settled steps with something else under the crosshair before a face counts as blocked
+OCCLUDED_LIMIT = 10
+# closer than this across the ground the aim point is under the camera, where yaw barely moves the crosshair
+OVERHEAD = 0.5
 # a front range reading this close while stopped is a block in the way
 BUMP_RANGE = 0.15
 # how far under the geofence's top the drone climbs at most
@@ -110,8 +111,10 @@ class Planner:
         # scripted controller, and the one that flies home to charge
         self.pilot = None
         self.home_pilot = None
-        # blocks the expert gave up on, and how long it has worked on the current one
+        # blocks the expert gave up on, faces of blocks it couldn't work from their pose as (block, normal), and how
+        # long it has worked on the current block
         self.unreachable: set[tuple] = set()
+        self.bad_faces: set[tuple] = set()
         self.working_on: tuple | None = None
         self.work_steps = 0
         self.absent_steps = 0
@@ -246,6 +249,9 @@ class Planner:
         eye = state["camera"]["eyeHeight"]
         eye_target = min(via[1], self.map.headroom(pos[0], pos[2]) - CEILING_GAP + eye)
         yaw_error, pitch_error, _ = aim_errors(state, aim)
+        if math.hypot(aim[0] - pos[0], aim[2] - pos[2]) < OVERHEAD:
+            # looking straight down the yaw to the aim point swings with every small drift, face the nearest axis instead
+            yaw_error = wrap(round(state["yaw"] / 90.0) * 90.0 - state["yaw"])
         move = [
             float(np.clip(forward, -1, 1)), float(np.clip(right, -1, 1)), float(np.clip(eye_target - (pos[1] + eye), -1, 1)),
             float(np.clip(yaw_error * TURN_GAIN, -1, 1)), float(np.clip(pitch_error * TURN_GAIN, -1, 1)),
@@ -267,14 +273,14 @@ class Planner:
             self.dwell = 0
 
     def work_on(
-        self, state: dict, block, tool: str, standoff: float, hover: float, point=None, expect: str | None = None, face: str | None = None,
-        place: str | None = None, via=None,
+        self, state: dict, block, tool: str, via, point, normal, expect: str | None = None, face: str | None = None,
+        place: str | None = None,
     ) -> dict:
         """
-        Fly to a block, aim at it (or at point), and use tool once the crosshair is on the block.
+        Fly the camera to via, a work pose square-on to the face of block that normal points out of, aim at point on that
+        face, and use tool once settled there with the crosshair on the block.
         With face set the crosshair has to be on that face of exactly this block, for placing where it counts.
         place names the block to put down, the drone swaps it into its first slot itself
-        via is where the camera should be, in place of standoff and hover, for a face only visible from one side
         """
         block = tuple(block)
         if block != self.working_on:
@@ -284,19 +290,15 @@ class Planner:
             self.occluded_steps = 0
         self.work_steps += 1
         if self.work_steps > WORK_LIMIT:
-            # a misread landmark or a spot the drone can't reach, look elsewhere
-            self.unreachable.add(block)
+            # a spot the drone can't get to or settle in, the planner picks another face or gives the block up
+            self.bad_faces.add((block, tuple(normal)))
             self.working_on = None
-        point = point or center(block)
-        self.intent = {"mode": tool, "aim": tuple(point), "via": tuple(via) if via is not None else None, "block": place}
-        if via is not None:
-            move, arrived = self.fly_to_view(state, via, point, column=(block[0], block[2]))
-        else:
-            # something keeps getting in the way of the crosshair, rise and close in for a steeper look
-            lift = min(4.0, self.occluded_steps * 0.15)
-            move, arrived = self.fly(state, point, max(1.2, standoff - lift / 2), hover + lift, column=(block[0], block[2]))
-        dist = math.dist(point, (state["pos"][0], state["pos"][1] + state["camera"]["eyeHeight"], state["pos"][2]))
+        self.intent = {"mode": tool, "aim": tuple(point), "via": tuple(via), "block": place}
+        move, _ = self.fly_to_view(state, via, point, column=(block[0], block[2]))
+        eye = (state["pos"][0], state["pos"][1] + state["camera"]["eyeHeight"], state["pos"][2])
+        dist = math.dist(point, eye)
         aimed = aim_angle(state, point) < AIM_TOLERANCE and dist <= REACH
+        settled = aimed and math.dist(via, eye) <= SETTLE
         hit = self.core.aim(state)
         expect = alias(expect) if expect else expect
         on_target = aimed and looking_at(hit, block)
@@ -307,9 +309,13 @@ class Planner:
             near = max(abs(a - b) for a, b in zip(hit["pos"], block)) <= 1
             on_target = near and aim_angle(state, point) < 2 * AIM_TOLERANCE
         blocked_view = hit is not None and hit["dist"] < dist - 0.6 and tuple(hit["pos"]) != block
-        self.occluded_steps = self.occluded_steps + 1 if arrived and not on_target and blocked_view else max(0, self.occluded_steps - 1)
+        self.occluded_steps = self.occluded_steps + 1 if settled and not on_target and blocked_view else max(0, self.occluded_steps - 1)
+        if self.occluded_steps >= OCCLUDED_LIMIT:
+            # something stands between the pose and the face, the planner works the block from another face
+            self.bad_faces.add((block, tuple(normal)))
+            self.working_on = None
         # aimed right at the remembered spot and something else is there, or the ray passes through it
-        if expect and face is None and arrived and aimed and not on_target:
+        if expect and face is None and settled and not on_target:
             # past the center means past where any block there would have stopped it, a short crop included
             through = hit is None or hit["dist"] > dist + 0.25
             wrong = hit is not None and tuple(hit["pos"]) == block and hit["block"] != expect
@@ -317,8 +323,7 @@ class Planner:
             if self.absent_steps >= 3:
                 self.unreachable.add(block)
                 self.map.forget(block)
-        # with a viewpoint the drone can be on target before it settles there, in a tight trench it may never settle
-        fire = on_target and (arrived or via is not None)
+        fire = on_target and settled
         return tool_action(move, tool if fire else "none", block=place)
 
     def nearest(self, state: dict, cells) -> tuple | None:

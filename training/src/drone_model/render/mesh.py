@@ -13,7 +13,7 @@ import numpy as np
 from .assets import DIR_VEC, Baked
 
 COLOR = np.dtype([("pos", "<f4", 3), ("uv", "<f4", 2), ("layer", "<f4"), ("color", "<f4", 3), ("light", "<f4", 2)])
-LABEL = np.dtype([("pos", "<f4", 3), ("cls", "<u4"), ("ripe", "<u4")])
+LABEL = np.dtype([("pos", "<f4", 3), ("cls", "<u4")])
 TRIANGLES = np.array([0, 1, 2, 0, 2, 3])
 # the 36 corners of a box's 12 triangles as 0 (min) or 1 (max) per axis
 BOX = np.array([
@@ -34,7 +34,6 @@ class Placed:
     props: dict[str, str]
     parts: list[Baked]
     cls: int
-    ripe: int
     light: int
     occludes: bool
     tints: list[np.ndarray]
@@ -116,7 +115,7 @@ def build(cells: dict[tuple[int, int, int], Placed], textures, frames: dict[str,
         tint_key = tuple(t.tobytes() for t in p.tints)
         for part in p.parts:
             groups[(id(part), tint_key, p.light > 0, p.fluid)].append((positions, part, p.tints))
-            labels[(id(part), p.cls, p.ripe)].append((positions, part))
+            labels[(id(part), p.cls)].append((positions, part))
     opaque, translucent = list(extra), []
     for (_, _, emits, fluid), members in groups.items():
         part, tints = members[0][1], members[0][2]
@@ -128,7 +127,7 @@ def build(cells: dict[tuple[int, int, int], Placed], textures, frames: dict[str,
         opaque.append(verts[~is_trans].reshape(-1))
         if is_trans.any():
             translucent.append(verts[is_trans])
-    label = [label_boxes(members[0][1], np.array([pos for m in members for pos in m[0]], dtype=np.int32), cls, ripe) for (_, cls, ripe), members in labels.items()]
+    label = [label_boxes(members[0][1], np.array([pos for m in members for pos in m[0]], dtype=np.int32), cls) for (_, cls), members in labels.items()]
     trans = np.concatenate(translucent) if translucent else np.zeros((0, 6), dtype=COLOR)
     return Mesh(
         np.concatenate(opaque) if opaque else np.zeros(0, dtype=COLOR),
@@ -223,11 +222,10 @@ def corner_sign(local: np.ndarray, axis: np.ndarray) -> np.ndarray:
     return np.where(c < 1e-4, -1, np.where(c > 1 - 1e-4, 1, 0)).astype(np.int32)
 
 
-def label_boxes(part: Baked, positions: np.ndarray, cls: int, ripe: int) -> np.ndarray:
+def label_boxes(part: Baked, positions: np.ndarray, cls: int) -> np.ndarray:
     lo, hi = part.boxes[:, 0], part.boxes[:, 1]
     corners = lo[:, None, :] + BOX[None] * (hi - lo)[:, None, :]
     v = np.zeros((len(positions), len(part.boxes), 36), dtype=LABEL)
     v["pos"] = corners[None] + positions[:, None, None, :]
     v["cls"] = cls
-    v["ripe"] = ripe
     return v.reshape(-1)

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..perception.classes import alias
-from ..perception.reader import CROPS, INDEX, NOT_CROP, OTHER
+from ..perception.reader import INDEX, OTHER
 from .assets import BIOMES, FLUIDS, Assets, Biome, light_of, split
 from .mesh import Placed
 
@@ -101,11 +101,8 @@ class Stager:
     def placed(self, block: str, props: dict[str, str], parts, biome: Biome) -> Placed:
         name = split(block)[1]
         cls = INDEX.get(alias(block), OTHER)
-        ripe = NOT_CROP
-        if block in CROPS:
-            ripe = 1 if int(props.get("age", 0)) == self.assets.max_age(block) else 0
         occludes = any(self.is_full(part) for part in parts)
-        return Placed(block, props, parts, cls, ripe, light_of(block, props), occludes, self.assets.tints(block, props, biome),
+        return Placed(block, props, parts, cls, light_of(block, props), occludes, self.assets.tints(block, props, biome),
                       fluid=FLUIDS.index(name) + 1 if name in FLUIDS else 0)
 
     def is_full(self, part) -> bool:

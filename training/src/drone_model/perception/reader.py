@@ -1,6 +1,6 @@
 """
 The block reader: a ConvNeXt-Tiny encoder pretrained on ImageNet with a U-Net decoder, which labels each pixel of the camera
-image and depth with the block or kind of mob it shows, and whether a crop is ripe.
+image and depth with the block or kind of mob it shows.
 It is trained on the mod's mask and state streams and needs neither when it runs
 """
 
@@ -29,9 +29,6 @@ MOBS = np.asarray([INDEX[name] for name in MOB_KINDS], dtype=np.uint16)
 MOB_SET = frozenset(MOB_KINDS)
 # blocks a mob can't stand inside, from the game's collision shapes
 SOLID = frozenset(b["name"] for b in _spec["blocks"] if b["solid"])
-CROPS = ("minecraft:wheat", "minecraft:carrots", "minecraft:potatoes", "minecraft:beetroots")
-# ripe label for pixels that aren't a crop, left out of the ripeness loss
-NOT_CROP = 255
 DEPTH_MAX = 64.0
 # ImageNet's channel statistics, the encoder was pretrained on inputs scaled by them
 RGB_MEAN = (0.485, 0.456, 0.406)
@@ -42,28 +39,13 @@ STRIDE = 32
 FRAME = (240, 320)
 
 
-def state_tables(state_names: list[str]) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Lookup tables from the state stream (0 sky, 1 + state id) to a class index and a ripe flag (1 ripe, 0 growing,
-    NOT_CROP for anything else). A crop is ripe at the highest age its block has
-    """
+def state_table(state_names: list[str]) -> np.ndarray:
+    """Lookup table from the state stream (0 sky, 1 + state id) to a class index"""
     classes = np.full(len(state_names) + 1, OTHER, dtype=np.uint16)
-    ripe = np.full(len(state_names) + 1, NOT_CROP, dtype=np.uint8)
     classes[0] = SKY
-    max_age: dict[str, int] = {}
-    for name in state_names:
-        block, _, props = name.partition("[")
-        if block in CROPS:
-            for p in props.rstrip("]").split(","):
-                if p.startswith("age="):
-                    max_age[block] = max(max_age.get(block, 0), int(p[4:]))
     for i, name in enumerate(state_names):
-        block, _, props = name.partition("[")
-        classes[i + 1] = INDEX.get(alias(block), OTHER)
-        if block in CROPS:
-            age = next((int(p[4:]) for p in props.rstrip("]").split(",") if p.startswith("age=")), 0)
-            ripe[i + 1] = 1 if age == max_age[block] else 0
-    return classes, ripe
+        classes[i + 1] = INDEX.get(alias(name.partition("[")[0]), OTHER)
+    return classes
 
 
 def entity_table(entities: list[str]) -> np.ndarray:
@@ -83,8 +65,8 @@ def block(cin: int, cout: int, stride: int = 1) -> nn.Sequential:
 
 class BlockReader(nn.Module):
     """
-    ConvNeXt-Tiny encoder and U-Net decoder over rgb and depth, outputs class logits (B, len(CLASSES), H, W) and ripe
-    logits (B, 1, H, W). Depth is a fourth input channel beside rgb.
+    ConvNeXt-Tiny encoder and U-Net decoder over rgb and depth, outputs class logits (B, len(CLASSES), H, W).
+    Depth is a fourth input channel beside rgb.
     pretrained starts the encoder from torchvision's ImageNet weights, a trained reader's checkpoint replaces them anyway
     """
 
@@ -112,17 +94,15 @@ class BlockReader(nn.Module):
         self.dec2 = block(96 + 64, 64)
         self.dec1 = block(64 + 32, 32)
         self.classes = nn.Conv2d(32, len(CLASSES), 1)
-        self.ripe = nn.Conv2d(32, 1, 1)
         self.register_buffer("rgb_mean", torch.tensor(RGB_MEAN).view(1, 3, 1, 1), persistent=False)
         self.register_buffer("rgb_std", torch.tensor(RGB_STD).view(1, 3, 1, 1), persistent=False)
 
-    def forward(self, rgb: torch.Tensor, depth: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, rgb: torch.Tensor, depth: torch.Tensor) -> torch.Tensor:
         """rgb (B, H, W, 3) uint8, depth (B, H, W) in blocks"""
-        d = self.features(rgb, depth)
-        return self.classes(d), self.ripe(d)
+        return self.classes(self.features(rgb, depth))
 
     def features(self, rgb: torch.Tensor, depth: torch.Tensor) -> torch.Tensor:
-        """The decoder's full-size features (B, 32, H, W), which the class and ripe heads read"""
+        """The decoder's full-size features (B, 32, H, W), which the class head reads"""
         color = (rgb.permute(0, 3, 1, 2).float() / 255.0 - self.rgb_mean) / self.rgb_std
         near = (depth.float().clamp(0, DEPTH_MAX) / DEPTH_MAX - 0.5) / 0.25
         x = torch.cat([color, near.unsqueeze(1)], dim=1)
@@ -163,7 +143,7 @@ def class_lut(mask_ids: dict) -> np.ndarray:
 
 
 class Reader:
-    """A trained BlockReader for one frame at a time, returning class indices and ripe probabilities"""
+    """A trained BlockReader for one frame at a time, returning class indices"""
 
     def __init__(self, checkpoint, device: torch.device | None = None) -> None:
         self.device = device or pick_device()
@@ -172,6 +152,6 @@ class Reader:
         self.model.eval()
 
     @torch.no_grad()
-    def read(self, rgb: np.ndarray, depth: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        logits, ripe = self.model(torch.from_numpy(rgb)[None].to(self.device), torch.from_numpy(depth)[None].to(self.device))
-        return logits[0].argmax(0).cpu().numpy().astype(np.uint16), torch.sigmoid(ripe[0, 0]).cpu().numpy()
+    def read(self, rgb: np.ndarray, depth: np.ndarray) -> np.ndarray:
+        logits = self.model(torch.from_numpy(rgb)[None].to(self.device), torch.from_numpy(depth)[None].to(self.device))
+        return logits[0].argmax(0).cpu().numpy().astype(np.uint16)

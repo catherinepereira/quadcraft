@@ -118,7 +118,8 @@ Planners are the teachers and, in the brain, the part that decides what to do. E
 What every planner shares, in `scripted/base.py`:
 
 - Flight: A* over the world map around tall columns and under low ceilings, at cruise height, with the scripted controller steering toward the goal and easing the camera onto the aim point.
-- Work: `work_on` flies to a block, aims at it, and fires once the crosshair (`DroneCore.aim`) rests on that cell within reach. It gives a block up after 150 steps, and when the crosshair shows the remembered block isn't there.
+- Work poses: every break and place is worked from a fixed pose, square-on to one face of the block (`JobPlanner.work_pose`). For a side face the camera is 2.5 blocks straight out from the face's center and level with it, so the drone faces north, south, east, or west. For a top face it is 2.5 blocks overhead looking straight down, or 45 degrees off one side when overhead is taken. A spot farther out, then the next face, takes over when the drone wouldn't fit or a known block stands in the line of sight. Breaks prefer the open side toward the drone. A pose stays picked until it's done or fails.
+- Work: `work_on` flies the camera to the pose, strafing the last 1.5 blocks with the camera locked on the face, and fires only once settled within 0.3 blocks of the pose with the crosshair (`DroneCore.aim`) on that cell. A face whose pose takes over 150 steps, or where something else stays under the crosshair, is dropped for the next face, and a block with no face left is given up. It also gives a block up when the crosshair shows the remembered block isn't there.
 - Getting unstuck: backing off and turning when told to move and not moving, and marking ceilings and blocked columns it bumps into.
 
 How a build runs:
@@ -189,7 +190,7 @@ Skill round, about 3 hours:
 | copy_build | flat, rough | 5 | 12 each | 4000 |
 | gather_build | flat | 4 | 10 | 6000 |
 
-The v1 policies trained on all the rounds collected so far: 1,220 goto episodes in 54 runs (best validation loss 0.086) and 416 skill episodes in 21 runs (best validation loss 0.201). Validation loss compares checkpoints of one policy on one dataset, it says little across datasets.
+The current policies trained on all the rounds collected so far: 1,220 goto episodes in 54 runs (best validation loss 0.086) and 108 skill episodes in 8 runs (best validation loss 0.202). The skill's data starts over from the square-on work pose, its older data taught the earlier geometry. Validation loss compares checkpoints of one policy on one dataset, it says little across datasets.
 
 ## The pipeline
 
